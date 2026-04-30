@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ipsita-Sathi</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #fdd0e0;
+            /* Soft Pink */
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: #fff;
+            /* White */
+            border-radius: 20px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 80%;
+            max-width: 600px;
+            text-align: center;
+            overflow: hidden;
+            /* Prevents content from overflowing */
+        }
+
+        h1 {
+            color: #e91e63;
+            /* Pink */
+            margin-bottom: 20px;
+            font-size: 2.5em;
+        }
+
+        .password-form,
+        .chat-interface {
+            margin-bottom: 25px;
+        }
+
+        input[type="password"],
+        button,
+        input[type="text"] {
+            padding: 12px;
+            margin: 8px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            font-size: 1em;
+            width: calc(100% - 20px);
+            /* Full width with padding */
+            box-sizing: border-box;
+            /* Include padding in width */
+        }
+
+        button {
+            background-color: #e91e63;
+            /* Pink */
+            color: white;
+            cursor: pointer;
+            border: none;
+            transition: background-color 0.3s ease;
+        }
+
+        button:hover {
+            background-color: #c2185b;
+        }
+
+        .chat-messages {
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            margin-bottom: 15px;
+            text-align: left;
+            border-radius: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .message {
+            margin-bottom: 12px;
+            padding: 12px;
+            border-radius: 10px;
+            word-wrap: break-word;
+            /* Allows long words to be broken */
+        }
+
+        .user-message {
+            background-color: #fce4ec;
+            /* Lighter Pink for user */
+            text-align: right;
+            align-self: flex-end;
+        }
+
+        .bot-message {
+            background-color: #e91e63;
+            color: white;
+            text-align: left;
+            align-self: flex-start;
+        }
+
+        .typing-indicator {
+            font-style: italic;
+            color: #999;
+            margin-top: 10px;
+        }
+
+        .affirmation {
+            font-style: italic;
+            color: #e91e63;
+            margin-top: 20px;
+            font-size: 1.1em;
+        }
+
+        .heart-icon {
+            font-size: 24px;
+            color: #e91e63;
+            animation: pulse 1s infinite;
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.2);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Ipsita-Sathi</h1>
+        <div class="password-form">
+            <input type="password" id="password" placeholder="Enter Password">
+            <button onclick="checkPassword()">Enter</button>
+        </div>
+        <div class="chat-interface" style="display: none;">
+            <div class="chat-messages" id="chatMessages">
+                <!-- Chat messages will be displayed here -->
+            </div>
+            <div>
+                <input type="text" id="userInput" placeholder="Type your message...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+            <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                AI is typing...
+            </div>
+            <div class="affirmation" id="dailyAffirmation">
+                <!-- Daily affirmation will be displayed here -->
+            </div>
+            <div class="heart-icon">&#10084;</div>
+        </div>
+    </div>
+    <script>
+        const password = 'ipsita';
+        const chatInterface = document.querySelector('.chat-interface');
+        const passwordForm = document.querySelector('.password-form');
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const dailyAffirmation = document.getElementById('dailyAffirmation');
+        let chatHistory = [];
+
+        function checkPassword() {
+            const inputPassword = document.getElementById('password').value;
+            if (inputPassword === password) {
+                passwordForm.style.display = 'none';
+                chatInterface.style.display = 'block';
+                loadChatHistory();
+                getDailyAffirmation();
+            } else {
+                alert('Incorrect password. Try again.');
+            }
+        }
+
+        function sendMessage() {
+            const message = userInput.value.trim();
+            if (message) {
+                displayMessage('user', message);
+                userInput.value = '';
+                getBotResponse(message);
+            }
+        }
+
+        function displayMessage(sender, message) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message', `${sender}-message`);
+            messageDiv.textContent = message;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            saveChatHistory(sender, message);
+        }
+
+        function saveChatHistory(sender, message) {
+            chatHistory.push({ sender, message });
+            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+        }
+
+        function loadChatHistory() {
+            const storedHistory = localStorage.getItem('chatHistory');
+            if (storedHistory) {
+                chatHistory = JSON.parse(storedHistory);
+                chatHistory.forEach(msg => displayMessage(msg.sender, msg.message));
+            }
+        }
+
+        async function getBotResponse(userMessage) {
+            typingIndicator.style.display = 'block';
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: userMessage })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.status} - ${await response.text()}`);
+                }
+
+                const data = await response.json();
+                typingIndicator.style.display = 'none';
+                let botResponse = data.response;
+                // Add personality
+                botResponse = `Ipsita, Mayank ye kehna chahta hai ki... ${botResponse}`;
+                displayMessage('bot', botResponse);
+
+            } catch (error) {
+                typingIndicator.style.display = 'none';
+                displayMessage('bot', 'Sorry, I am having trouble responding right now.');
+                console.error('Error:', error);
+            }
+        }
+
+        function getDailyAffirmation() {
+            const affirmations = [
+                "You are loved.",
+                "You are strong.",
+                "You are beautiful.",
+                "You are worthy.",
+                "You are enough."
+            ];
+            const randomIndex = Math.floor(Math.random() * affirmations.length);
+            dailyAffirmation.textContent = affirmations[randomIndex];
+        }
+    </script>
+</body>
+
+</html>
