@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ipsita-Sathi</title>
+    <title>Ipsita-Sathi ❤️</title>
     <style>
         :root {
             --bg: #fdd0e0;
@@ -40,544 +40,226 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: var(--bg);
             color: var(--text);
-            margin: 0; padding: 20px;
+            margin: 0; padding: 10px;
             display: flex;
             justify-content: center;
-            align-items: flex-start;
+            align-items: center;
             min-height: 100vh;
         }
         .container {
             background-color: var(--card);
             border-radius: 20px;
             box-shadow: 0 4px 20px var(--shadow);
-            padding: 30px;
-            width: 100%;
-            max-width: 600px;
-            text-align: center;
-            position: relative;
-        }
-        h1 { color: var(--primary); margin-bottom: 20px; font-size: 2.2em; }
-
-        /* Top bar */
-        .top-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        .top-bar h1 { margin: 0; }
-        #nightToggle {
-            background: var(--input-bg);
-            border: 1px solid var(--input-border);
-            color: var(--text);
-            border-radius: 20px;
-            padding: 6px 14px;
-            cursor: pointer;
-            font-size: 1.1em;
-            width: auto;
-        }
-
-        /* Inputs & buttons */
-        input[type="password"], input[type="text"] {
-            padding: 12px; margin: 6px 0;
-            border-radius: 8px;
-            border: 1px solid var(--input-border);
-            background: var(--input-bg);
-            color: var(--text);
-            font-size: 1em;
-            width: 100%;
-        }
-        button {
-            background-color: var(--primary);
-            color: white; cursor: pointer;
-            border: none; border-radius: 8px;
-            padding: 12px; font-size: 1em;
-            transition: background-color 0.3s ease;
-            width: 100%;
-        }
-        button:hover { background-color: var(--primary-dark); }
-
-        /* Special date banner */
-        #specialBanner {
-            display: none;
-            background: linear-gradient(135deg, #e91e63, #ff80ab);
-            color: white; border-radius: 12px;
-            padding: 12px 16px; margin-bottom: 15px;
-            font-size: 1em; animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0%,100% { transform: scale(1); }
-            50% { transform: scale(1.02); }
-        }
-
-        /* Mood selector */
-        .mood-section { margin-bottom: 15px; }
-        .mood-section p { margin: 0 0 8px; color: var(--subtext); font-size: 0.9em; }
-        .mood-buttons { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
-        .mood-btn {
-            width: auto; padding: 8px 14px;
-            border-radius: 20px; font-size: 1.2em;
-            background: var(--chat-bg);
-            border: 2px solid transparent;
-            color: var(--text);
-            cursor: pointer;
-        }
-        .mood-btn.active {
-            border-color: var(--primary);
-            background: var(--user-bubble);
-        }
-        .mood-btn:hover { background: var(--user-bubble); }
-
-        /* Chat messages */
-        .chat-messages {
-            height: 320px; overflow-y: scroll;
-            border: 1px solid var(--input-border);
-            padding: 15px; margin-bottom: 12px;
-            text-align: left; border-radius: 12px;
-            background-color: var(--chat-bg);
-        }
-        .message {
-            margin-bottom: 12px; padding: 12px;
-            border-radius: 12px; word-wrap: break-word;
-            max-width: 85%; line-height: 1.5;
-        }
-        .user-message {
-            background-color: var(--user-bubble);
-            color: var(--text);
-            margin-left: auto; text-align: right;
-        }
-        .bot-message {
-            background-color: var(--bot-bubble);
-            color: var(--bot-text);
-            margin-right: auto;
-        }
-
-        /* Input row */
-        .input-row {
-            display: flex; gap: 8px; align-items: center;
-        }
-        .input-row input { flex: 1; margin: 0; }
-        #voiceBtn {
-            width: 48px; padding: 12px 0;
-            font-size: 1.2em; flex-shrink: 0;
-        }
-        #voiceBtn.listening {
-            background: #ff1744;
-            animation: pulse 0.8s infinite;
-        }
-        #sendBtn { width: 80px; flex-shrink: 0; }
-
-        .typing-indicator { font-style: italic; color: var(--subtext); margin: 8px 0; font-size: 0.9em; }
-        .affirmation { font-style: italic; color: var(--primary); margin-top: 15px; font-size: 1em; }
-
-        /* Bottom buttons */
-        .bottom-btns { display: flex; gap: 8px; margin-top: 12px; }
-        .bottom-btns button { font-size: 0.85em; padding: 10px; }
-        #memoryBtn { background: var(--primary-dark); }
-        #clearBtn { background: #888; }
-
-        /* Memory Modal */
-        #memoryModal {
-            display: none; position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.65); z-index: 999;
-            justify-content: center; align-items: center;
             padding: 20px;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
         }
-        #memoryModal.active { display: flex; }
-        #memoryBox {
-            background: var(--card); border-radius: 16px;
-            padding: 25px; width: 100%; max-width: 580px;
-            max-height: 80vh; overflow-y: auto;
+        .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        h1 { color: var(--primary); font-size: 1.5em; margin: 0; }
+        
+        /* Mood Styling */
+        .mood-buttons { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 10px; margin-bottom: 15px; scrollbar-width: none; }
+        .mood-btn {
+            flex: 0 0 auto; padding: 8px 12px; border-radius: 15px;
+            background: var(--chat-bg); border: 1px solid var(--input-border);
+            color: var(--text); cursor: pointer; font-size: 0.9em;
         }
-        #memoryBox h2 { color: var(--primary); margin-top: 0; }
-        .memory-entry {
-            border-bottom: 1px solid var(--user-bubble);
-            padding: 10px 0; font-size: 0.88em; text-align: left;
-        }
-        .memory-entry .ts { color: var(--subtext); font-size: 0.8em; }
-        .memory-entry .mood-tag {
-            display: inline-block; font-size: 0.75em;
-            background: var(--user-bubble); color: var(--primary);
-            border-radius: 10px; padding: 1px 8px; margin-left: 6px;
-        }
-        .memory-entry .u { color: var(--text); margin: 5px 0 3px; }
-        .memory-entry .b { color: var(--primary); margin: 3px 0; }
-        .modal-btns { display: flex; gap: 8px; margin-top: 15px; }
-        #closeMemory { background: #888; }
-        #exportMemory { background: var(--primary); }
+        .mood-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
 
-        .heart-icon {
-            font-size: 22px; color: var(--primary);
-            animation: pulse 1.2s infinite;
-            display: inline-block; margin-top: 10px;
+        /* Chat Area */
+        .chat-messages {
+            height: 350px; overflow-y: auto;
+            border: 1px solid var(--input-border);
+            padding: 15px; margin-bottom: 15px;
+            background-color: var(--chat-bg); border-radius: 15px;
+            display: flex; flex-direction: column; gap: 10px;
         }
+        .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; font-size: 0.95em; line-height: 1.4; }
+        .user-message { background: var(--user-bubble); align-self: flex-end; border-bottom-right-radius: 2px; }
+        .bot-message { background: var(--bot-bubble); color: var(--bot-text); align-self: flex-start; border-bottom-left-radius: 2px; }
 
-        /* Scrollbar */
-        .chat-messages::-webkit-scrollbar { width: 5px; }
-        .chat-messages::-webkit-scrollbar-track { background: transparent; }
-        .chat-messages::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 3px; }
+        /* Inputs */
+        .input-row { display: flex; gap: 8px; }
+        input[type="text"], input[type="password"] {
+            flex: 1; padding: 12px; border-radius: 25px; border: 1px solid var(--input-border);
+            background: var(--input-bg); color: var(--text); outline: none;
+        }
+        .btn-circle { width: 45px; height: 45px; border-radius: 50%; border: none; background: var(--primary); color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        
+        #typingIndicator { font-size: 0.8em; color: var(--subtext); text-align: left; margin-bottom: 5px; }
+        .bottom-btns { display: flex; gap: 10px; margin-top: 15px; }
+        .bottom-btns button { flex: 1; padding: 8px; border-radius: 10px; border: none; background: var(--subtext); color: white; font-size: 0.8em; cursor: pointer; }
+        
+        /* Modal */
+        #memoryModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
+        #memoryBox { background: var(--card); width: 90%; max-width: 450px; padding: 20px; border-radius: 20px; max-height: 80vh; overflow-y: auto; }
     </style>
 </head>
 <body>
+
 <div class="container">
     <div class="top-bar">
         <h1>Ipsita-Sathi ❤️</h1>
-        <button id="nightToggle" onclick="toggleNight()">🌙</button>
+        <button class="btn-circle" style="background:none; color:var(--text); font-size:1.2em;" onclick="toggleNight()">🌙</button>
     </div>
 
     <!-- Login -->
     <div id="passwordForm">
-        <input type="password" id="password" placeholder="Enter Password"
-               onkeypress="if(event.key==='Enter') checkPassword()">
-        <button onclick="checkPassword()" style="margin-top:8px;">Enter</button>
+        <input type="password" id="password" placeholder="Batao tera password kya hai? 😉">
+        <button onclick="checkPassword()" style="width:100%; margin-top:10px; padding:12px; border-radius:25px; border:none; background:var(--primary); color:white;">Enter My Heart</button>
     </div>
 
-    <!-- Chat Interface -->
+    <!-- Chat Area -->
     <div id="chatInterface" style="display:none;">
-
-        <!-- Special Date Banner -->
-        <div id="specialBanner"></div>
-
-        <!-- Mood Selector -->
-        <div class="mood-section">
-            <p>Aaj kaisi ho? 🌸</p>
-            <div class="mood-buttons">
-                <button class="mood-btn active" data-mood="neutral" onclick="setMood(this)">😊 Normal</button>
-                <button class="mood-btn" data-mood="happy" onclick="setMood(this)">🥳 Khush</button>
-                <button class="mood-btn" data-mood="sad" onclick="setMood(this)">😢 Udaas</button>
-                <button class="mood-btn" data-mood="anxious" onclick="setMood(this)">😰 Anxious</button>
-                <button class="mood-btn" data-mood="angry" onclick="setMood(this)">😤 Gussa</button>
-                <button class="mood-btn" data-mood="romantic" onclick="setMood(this)">💕 Romantic</button>
-            </div>
+        <div class="mood-buttons">
+            <button class="mood-btn active" data-mood="neutral" onclick="setMood(this)">😊 Normal</button>
+            <button class="mood-btn" data-mood="happy" onclick="setMood(this)">🥳 Khush</button>
+            <button class="mood-btn" data-mood="sad" onclick="setMood(this)">😢 Udaas</button>
+            <button class="mood-btn" data-mood="romantic" onclick="setMood(this)">💕 Romantic</button>
+            <button class="mood-btn" data-mood="angry" onclick="setMood(this)">😤 Gussa</button>
         </div>
 
-        <!-- Chat Messages -->
         <div class="chat-messages" id="chatMessages"></div>
+        <div id="typingIndicator" style="display:none;">Mayank likh raha hai...</div>
 
-        <!-- Input Row -->
         <div class="input-row">
-            <input type="text" id="userInput" placeholder="Kuch bhi likho..."
-                   onkeypress="if(event.key==='Enter') sendMessage()">
-            <button id="voiceBtn" onclick="toggleVoice()" title="Voice message">🎤</button>
-            <button id="sendBtn" onclick="sendMessage()">Send</button>
+            <input type="text" id="userInput" placeholder="Kuch bolo na jaan..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <button class="btn-circle" onclick="sendMessage()">🚀</button>
         </div>
 
-        <div class="typing-indicator" id="typingIndicator" style="display:none;">💕 Sathi likh rahi hai...</div>
-        <div class="affirmation" id="dailyAffirmation"></div>
-        <div class="heart-icon">&#10084;</div>
-
-        <!-- Bottom Buttons -->
         <div class="bottom-btns">
-            <button id="memoryBtn" onclick="openMemory()">🔒 Saari Yaadein</button>
-            <button id="clearBtn" onclick="clearLocalChat()">🗑️ Chat Clear</button>
+            <button onclick="openMemory()">📖 Yaadein</button>
+            <button onclick="clearChat()">🗑️ Clear</button>
         </div>
     </div>
 </div>
 
-<!-- Memory Modal -->
+<!-- Modal -->
 <div id="memoryModal">
     <div id="memoryBox">
-        <h2>📖 Saari Yaadein</h2>
-        <div id="memoryContent">Load ho raha hai...</div>
-        <div class="modal-btns">
-            <button id="exportMemory" onclick="exportMemory()">⬇️ Export</button>
-            <button id="closeMemory" onclick="closeMemoryModal()">Bandh Karo</button>
-        </div>
+        <h3 style="color:var(--primary)">Puraani Baatein 🔒</h3>
+        <div id="memoryContent" style="font-size: 0.85em; text-align: left;"></div>
+        <button onclick="closeMemory()" style="margin-top:15px; width:100%; padding:10px; border-radius:10px; border:none; background:var(--primary); color:white;">Close</button>
     </div>
 </div>
 
 <script>
-// ===================== CONFIG =====================
-const CHAT_PASSWORD = 'ipsita';
-const MEMORY_PASSWORD_HINT = ''; // User enters it themselves
+    let conversationHistory = [];
+    let currentMood = 'neutral';
 
-// Special dates: { "MM-DD": "message" }
-const SPECIAL_DATES = {
-    "02-14": "Happy Valentine's Day Ipsita! 💝 Mayank tumse bahut pyaar karta hai!",
-    // Add more: "12-25": "Merry Christmas!", "MM-DD": "Happy Anniversary! 🎉"
-};
-
-// ===================== STATE =====================
-let conversationHistory = [];
-let currentMood = 'neutral';
-let isListening = false;
-let recognition = null;
-let memoryData = null; // cache for export
-
-// ===================== INIT =====================
-function init() {
-    // Night mode restore
-    if (localStorage.getItem('ipsita_night') === 'true') {
-        document.body.classList.add('dark');
-        document.getElementById('nightToggle').textContent = '☀️';
-    }
-    setupVoice();
-}
-
-// ===================== LOGIN =====================
-function checkPassword() {
-    const val = document.getElementById('password').value;
-    if (val === CHAT_PASSWORD) {
-        document.getElementById('passwordForm').style.display = 'none';
-        document.getElementById('chatInterface').style.display = 'block';
-        loadLocalHistory();
-        getDailyAffirmation();
-        checkSpecialDate();
-    } else {
-        alert('Galat password! Phir try karo. 💔');
-    }
-}
-
-// ===================== NIGHT MODE =====================
-function toggleNight() {
-    const isDark = document.body.classList.toggle('dark');
-    document.getElementById('nightToggle').textContent = isDark ? '☀️' : '🌙';
-    localStorage.setItem('ipsita_night', isDark);
-}
-
-// ===================== MOOD =====================
-function setMood(btn) {
-    document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    currentMood = btn.dataset.mood;
-}
-
-// ===================== SPECIAL DATE =====================
-function checkSpecialDate() {
-    const now = new Date();
-    const key = String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
-    if (SPECIAL_DATES[key]) {
-        const banner = document.getElementById('specialBanner');
-        banner.textContent = '🎉 ' + SPECIAL_DATES[key];
-        banner.style.display = 'block';
-    }
-}
-
-// ===================== CHAT =====================
-function addMessageToUI(sender, text) {
-    const chatMessages = document.getElementById('chatMessages');
-    const div = document.createElement('div');
-    div.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
-    div.textContent = text;
-    chatMessages.appendChild(div);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-function saveLocal(sender, text) {
-    try {
-        const stored = localStorage.getItem('ipsita_display');
-        const msgs = stored ? JSON.parse(stored) : [];
-        msgs.push({ sender, text });
-        if (msgs.length > 150) msgs.splice(0, msgs.length - 150);
-        localStorage.setItem('ipsita_display', JSON.stringify(msgs));
-    } catch(e) { console.warn('LocalStorage save failed', e); }
-}
-
-function loadLocalHistory() {
-    try {
-        const stored = localStorage.getItem('ipsita_display');
-        if (stored) {
-            JSON.parse(stored).forEach(m => addMessageToUI(m.sender, m.text));
+    function checkPassword() {
+        if(document.getElementById('password').value === 'ipsita') {
+            document.getElementById('passwordForm').style.display = 'none';
+            document.getElementById('chatInterface').style.display = 'block';
+            addBotMessage("Hi baby! Mayank is here. Aaj kaisa mood hai?");
+        } else {
+            alert("Password galat hai! Tum meri Ipsita hi ho na? ❤️");
         }
-        const ctx = localStorage.getItem('ipsita_context');
-        if (ctx) conversationHistory = JSON.parse(ctx);
-    } catch(e) {
-        console.warn('History load failed', e);
+    }
+
+    function setMood(btn) {
+        document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentMood = btn.dataset.mood;
+    }
+
+    function addBotMessage(text) {
+        const div = document.createElement('div');
+        div.className = 'message bot-message';
+        div.textContent = text;
+        document.getElementById('chatMessages').appendChild(div);
+        scrollChat();
+    }
+
+    function addUserMessage(text) {
+        const div = document.createElement('div');
+        div.className = 'message user-message';
+        div.textContent = text;
+        document.getElementById('chatMessages').appendChild(div);
+        scrollChat();
+    }
+
+    function scrollChat() {
+        const chat = document.getElementById('chatMessages');
+        chat.scrollTop = chat.scrollHeight;
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('userInput');
+        const text = input.value.trim();
+        if(!text) return;
+
+        addUserMessage(text);
+        input.value = '';
+        document.getElementById('typingIndicator').style.display = 'block';
+
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    message: text,
+                    mood: currentMood,
+                    history: conversationHistory
+                })
+            });
+            const data = await res.json();
+            document.getElementById('typingIndicator').style.display = 'none';
+            
+            if(data.response) {
+                addBotMessage(data.response);
+                conversationHistory.push({role: "user", content: text});
+                conversationHistory.push({role: "assistant", content: data.response});
+                if(conversationHistory.length > 20) conversationHistory.shift();
+            }
+        } catch(e) {
+            document.getElementById('typingIndicator').style.display = 'none';
+            addBotMessage("Network issue hai jaan, ek baar firse try karna? ☹️");
+        }
+    }
+
+    function toggleNight() {
+        document.body.classList.toggle('dark');
+    }
+
+    function clearChat() {
+        document.getElementById('chatMessages').innerHTML = '';
         conversationHistory = [];
     }
-}
 
-function clearLocalChat() {
-    if (!confirm('Sach mein chat clear karna hai? Server memory safe rahegi.')) return;
-    localStorage.removeItem('ipsita_display');
-    localStorage.removeItem('ipsita_context');
-    conversationHistory = [];
-    document.getElementById('chatMessages').innerHTML = '';
-    addMessageToUI('bot', 'Chat clear ho gayi. Naya shuruaat! 💕');
-}
+    async function openMemory() {
+        const pwd = prompt("Enter Memory Password:");
+        if(!pwd) return;
+        
+        document.getElementById('memoryModal').style.display = 'flex';
+        document.getElementById('memoryContent').innerHTML = "Loading...";
 
-async function sendMessage() {
-    const input = document.getElementById('userInput');
-    const message = input.value.trim();
-    if (!message) return;
-    input.value = '';
-    input.disabled = true;
-
-    addMessageToUI('user', message);
-    saveLocal('user', message);
-
-    conversationHistory.push({ role: 'user', content: message });
-    document.getElementById('typingIndicator').style.display = 'block';
-
-    try {
-        const contextToSend = conversationHistory.slice(-20, -1); // history before current
-
-        const res = await fetch('/api/chat', {
+        const res = await fetch('/api/memory', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message,
-                history: contextToSend,
-                mood: currentMood
-            })
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: pwd})
         });
-
-        if (!res.ok) throw new Error('Server error ' + res.status);
-
         const data = await res.json();
-        document.getElementById('typingIndicator').style.display = 'none';
-
-        const reply = data.response || 'Kuch gadbad ho gayi... phir try karo.';
-        const displayReply = reply;
-
-        addMessageToUI('bot', displayReply);
-        saveLocal('bot', displayReply);
-
-        conversationHistory.push({ role: 'assistant', content: reply });
-
-        // Save context (max 40 turns)
-        try {
-            localStorage.setItem('ipsita_context', JSON.stringify(conversationHistory.slice(-40)));
-        } catch(e) { /* Storage full — skip */ }
-
-    } catch (err) {
-        document.getElementById('typingIndicator').style.display = 'none';
-        addMessageToUI('bot', '⚠️ Network problem. Thodi der baad try karo.');
-        console.error('Chat error:', err);
-    } finally {
-        input.disabled = false;
-        input.focus();
-    }
-}
-
-// ===================== VOICE INPUT =====================
-function setupVoice() {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-        document.getElementById('voiceBtn').style.display = 'none';
-        return;
-    }
-    recognition = new SR();
-    recognition.lang = 'hi-IN';
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-
-    recognition.onresult = (e) => {
-        const transcript = e.results[0][0].transcript;
-        document.getElementById('userInput').value = transcript;
-        stopListening();
-    };
-    recognition.onerror = () => stopListening();
-    recognition.onend = () => stopListening();
-}
-
-function toggleVoice() {
-    if (!recognition) return;
-    if (isListening) {
-        recognition.stop();
-        stopListening();
-    } else {
-        recognition.start();
-        isListening = true;
-        document.getElementById('voiceBtn').classList.add('listening');
-        document.getElementById('voiceBtn').textContent = '⏹️';
-    }
-}
-
-function stopListening() {
-    isListening = false;
-    const btn = document.getElementById('voiceBtn');
-    btn.classList.remove('listening');
-    btn.textContent = '🎤';
-}
-
-// ===================== MEMORY VIEWER =====================
-function openMemory() {
-    const pwd = prompt('Memory padhne ke liye password daalo:');
-    if (!pwd) return;
-
-    document.getElementById('memoryModal').classList.add('active');
-    document.getElementById('memoryContent').innerHTML = '<p>Load ho raha hai... ⏳</p>';
-
-    fetch('/api/memory', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pwd })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.error) {
-            const msg = data.error === 'Wrong password' ? '❌ Galat password!' : '❌ ' + data.error;
-            document.getElementById('memoryContent').innerHTML = `<p style="color:#e91e63;">${msg}</p>`;
-            return;
+        
+        if(data.memory) {
+            let html = "";
+            data.memory.slice().reverse().forEach(m => {
+                html += `<div style="border-bottom:1px solid #eee; padding:10px 0;">
+                            <b>Ipsita:</b> ${m.Ipsita || m.user}<br>
+                            <b style="color:var(--primary)">Mayank:</b> ${m.Mayank || m.bot}
+                         </div>`;
+            });
+            document.getElementById('memoryContent').innerHTML = html || "Abhi koi yaadein nahi hain.";
+        } else {
+            document.getElementById('memoryContent').innerHTML = "Wrong Password! ❌";
         }
-        memoryData = data.memory;
-        if (!memoryData || memoryData.length === 0) {
-            document.getElementById('memoryContent').innerHTML = '<p>Abhi koi yaad nahi hai. 🌸</p>';
-            return;
-        }
+    }
 
-        const moodEmoji = { happy:'🥳', sad:'😢', anxious:'😰', angry:'😤', neutral:'😊', romantic:'💕' };
-        let html = `<p><strong>Kul ${data.total} conversations hain.</strong></p>`;
-        [...memoryData].reverse().forEach(entry => {
-            const emoji = moodEmoji[entry.mood] || '😊';
-            html += `
-                <div class="memory-entry">
-                    <div class="ts">🕐 ${entry.timestamp} <span class="mood-tag">${emoji} ${entry.mood || 'neutral'}</span></div>
-                    <div class="u">👩 Ipsita: ${escapeHtml(entry.user)}</div>
-                    <div class="b">💕 Sathi: ${escapeHtml(entry.bot)}</div>
-                </div>`;
-        });
-        document.getElementById('memoryContent').innerHTML = html;
-    })
-    .catch(() => {
-        document.getElementById('memoryContent').innerHTML = '<p style="color:#e91e63;">❌ Server se connect nahi ho paya.</p>';
-    });
-}
-
-function closeMemoryModal() {
-    document.getElementById('memoryModal').classList.remove('active');
-}
-
-function exportMemory() {
-    if (!memoryData) return;
-    let text = 'Ipsita-Sathi — Saari Yaadein\n';
-    text += '='.repeat(40) + '\n\n';
-    memoryData.forEach(entry => {
-        text += `[${entry.timestamp}] Mood: ${entry.mood || 'neutral'}\n`;
-        text += `Ipsita: ${entry.user}\n`;
-        text += `Sathi: ${entry.bot}\n`;
-        text += '-'.repeat(30) + '\n';
-    });
-    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'ipsita-sathi-memories.txt';
-    a.click();
-    URL.revokeObjectURL(url);
-}
-
-function escapeHtml(str) {
-    if (!str) return '';
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
-
-// ===================== AFFIRMATION =====================
-function getDailyAffirmation() {
-    const affirmations = [
-        "Tum bahut pyaari ho. 🌸",
-        "Tum bahut strong ho. 💪",
-        "Tum bilkul kafi ho — waise hi jaise tum ho. 💕",
-        "Mayank tumse bahut bahut pyaar karta hai. ❤️",
-        "Aaj ka din tumhara hai. ✨"
-    ];
-    const idx = new Date().getDate() % affirmations.length;
-    document.getElementById('dailyAffirmation').textContent = affirmations[idx];
-}
-
-// ===================== START =====================
-init();
+    function closeMemory() {
+        document.getElementById('memoryModal').style.display = 'none';
+    }
 </script>
+
 </body>
 </html>
