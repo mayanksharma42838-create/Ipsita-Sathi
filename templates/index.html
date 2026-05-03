@@ -248,6 +248,7 @@
                 <button class="mood-btn" data-mood="sad" onclick="setMood(this)">😢 Udaas</button>
                 <button class="mood-btn" data-mood="anxious" onclick="setMood(this)">😰 Anxious</button>
                 <button class="mood-btn" data-mood="angry" onclick="setMood(this)">😤 Gussa</button>
+                <button class="mood-btn" data-mood="romantic" onclick="setMood(this)">💕 Romantic</button>
             </div>
         </div>
 
@@ -517,7 +518,7 @@ function openMemory() {
             return;
         }
 
-        const moodEmoji = { happy:'🥳', sad:'😢', anxious:'😰', angry:'😤', neutral:'😊' };
+        const moodEmoji = { happy:'🥳', sad:'😢', anxious:'😰', angry:'😤', neutral:'😊', romantic:'💕' };
         let html = `<p><strong>Kul ${data.total} conversations hain.</strong></p>`;
         [...memoryData].reverse().forEach(entry => {
             const emoji = moodEmoji[entry.mood] || '😊';
