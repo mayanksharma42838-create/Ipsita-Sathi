@@ -6,10 +6,17 @@ import requests
 
 app = Flask(__name__)
 
-# Google AI Studio se free Gemini key
 API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-2.0-flash"
-API_URL = "https://generativelanguage.googleapis.com/v1beta/models/" + GEMINI_MODEL + ":generateContent"
+
+# Multiple models - try each if one hits rate limit
+GEMINI_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-2.0-flash-lite"
+]
+
+API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
 
 MEMORY_FILE = "memory.json"
 MEMORY_PASSWORD = "4152004"
@@ -44,7 +51,7 @@ BAAT KARNE KA STYLE:
 - Chhote chhote messages bhej, real texting jaisa. Lambe paragraphs nahi.
 - Casual words: "yaar", "arre", "pagal", "jaan", "baby".
 - Emojis thode use kar - 1-2 per message max.
-- "I understand", "That sounds tough", "samjh sakta hoon" jaisi conversational fillers use kar.
+- "samjh sakta hoon", "I get it", "yaar that sounds tough" jaisi conversational fillers use kar.
 
 PERSONALITY:
 - Caring, supportive, empathetic boyfriend.
@@ -58,13 +65,13 @@ KEY: Ipsita ki energy match kar. Agar woh playful hai, playful reh. Agar serious
 
 EXAMPLES:
 Ipsita: "Kya kar rahe ho"
-Mayank: "Bas tera hi soch raha tha 😄 miss kar raha tha tujhe seriously"
+Mayank: "Bas tera hi soch raha tha 😄 miss kar raha tha tujhe"
 
 Ipsita: "Aaj bahut bura din tha"
 Mayank: "Arre kya hua jaan? Bata na poora... main hoon na, sun raha hoon"
 
 Ipsita: "Neend nahi aa rahi"
-Mayank: "Mere baare mein soch rahi hai isliye 😏 baat karte hain phir, neend aa jayegi"
+Mayank: "Mere baare mein soch rahi hai isliye 😏 baat karte hain phir"
 """
 
 
@@ -88,20 +95,17 @@ def save_to_memory(user_msg, bot_msg, mood="neutral"):
         json.dump(memory, f, ensure_ascii=False, indent=2)
 
 
-def call_gemini(system_prompt, history, user_text):
-    """Call Google Gemini API directly."""
-    # Convert history (OpenAI format) to Gemini format
+def call_gemini(model, system_prompt, history, user_text):
+    """Call Google Gemini API with specific model."""
     contents = []
     for msg in history:
         role = msg.get("role", "user")
-        # Gemini uses "model" not "assistant"
         gemini_role = "model" if role == "assistant" else "user"
         contents.append({
             "role": gemini_role,
             "parts": [{"text": msg.get("content", "")}]
         })
 
-    # Add current user message
     contents.append({
         "role": "user",
         "parts": [{"text": user_text}]
@@ -118,7 +122,7 @@ def call_gemini(system_prompt, history, user_text):
         }
     }
 
-    url = API_URL + "?key=" + API_KEY
+    url = API_BASE + model + ":generateContent?key=" + API_KEY
     response = requests.post(
         url,
         headers={"Content-Type": "application/json"},
@@ -126,19 +130,40 @@ def call_gemini(system_prompt, history, user_text):
         timeout=60
     )
 
-    if response.status_code != 200:
-        raise Exception("Gemini API error: " + str(response.status_code) + " - " + response.text[:200])
+    return response
 
-    data = response.json()
-    candidates = data.get("candidates", [])
-    if not candidates:
-        raise Exception("No response from Gemini")
 
-    parts = candidates[0].get("content", {}).get("parts", [])
-    if not parts:
-        raise Exception("Empty response from Gemini")
+def get_reply(system_prompt, history, user_text):
+    """Try each model until one works."""
+    last_error = None
 
-    return parts[0].get("text", "").strip()
+    for model in GEMINI_MODELS:
+        try:
+            response = call_gemini(model, system_prompt, history, user_text)
+
+            if response.status_code == 200:
+                data = response.json()
+                candidates = data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts:
+                        text = parts[0].get("text", "").strip()
+                        if text and len(text) > 3:
+                            return text, model
+
+            elif response.status_code == 429:
+                # Rate limit on this model, try next
+                last_error = "429 rate limit on " + model
+                continue
+            else:
+                last_error = str(response.status_code) + " on " + model
+                continue
+
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    raise Exception("All models failed. Last error: " + str(last_error))
 
 
 @app.route("/")
@@ -149,12 +174,19 @@ def home():
 @app.route("/debug")
 def debug():
     if not API_KEY:
-        return jsonify({"error": "GEMINI_API_KEY missing in Render environment variables"})
-    try:
-        reply = call_gemini("You are a helpful assistant.", [], "Say hello in one short sentence")
-        return jsonify({"status": "OK", "model": GEMINI_MODEL, "test_reply": reply})
-    except Exception as e:
-        return jsonify({"error": str(e)})
+        return jsonify({"error": "GEMINI_API_KEY missing"})
+
+    results = {}
+    for model in GEMINI_MODELS:
+        try:
+            response = call_gemini(model, "You are helpful.", [], "Say hi briefly")
+            results[model] = {
+                "status": response.status_code,
+                "ok": response.status_code == 200
+            }
+        except Exception as e:
+            results[model] = {"error": str(e)}
+    return jsonify(results)
 
 
 @app.route("/api/chat", methods=["POST"])
@@ -166,20 +198,18 @@ def chat():
         mood = data.get("mood", "neutral")
 
         if not API_KEY:
-            return jsonify({"response": "GEMINI_API_KEY missing hai Render settings mein! Add karo first."})
+            return jsonify({"response": "GEMINI_API_KEY missing hai Render mein! Add karo first."})
 
         mood_context = MOOD_PROMPTS.get(mood, MOOD_PROMPTS["neutral"])
         full_system = SYSTEM_PROMPT_BASE + "\n\nAaj ka context: " + mood_context
 
         try:
-            reply = call_gemini(full_system, history[-16:], user_text)
-            if reply and len(reply.strip()) > 3:
-                save_to_memory(user_text, reply, mood)
-                return jsonify({"response": reply})
+            reply, model_used = get_reply(full_system, history[-16:], user_text)
+            save_to_memory(user_text, reply, mood)
+            return jsonify({"response": reply})
         except Exception as e:
-            print("Gemini error:", str(e))
-
-        return jsonify({"response": "Ipsita sorry yaar net nahi chal raha mera. Thodi der mein text karta hoon okay?"})
+            print("All models failed:", str(e))
+            return jsonify({"response": "Ipsita sorry yaar abhi net issue hai. Thodi der mein try karna okay?"})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
