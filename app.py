@@ -41,6 +41,19 @@ def save_to_memory(user_msg, bot_msg, mood="neutral"):
 def home():
     return render_template('index.html')
 
+@app.route('/debug')
+def debug():
+    key = API_KEY
+    if not key:
+        return jsonify({"error": "API_KEY missing in Render environment"})
+    try:
+        headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+        payload = {"model": "openrouter/free", "messages": [{"role": "user", "content": "Hi"}]}
+        r = requests.post(API_URL, headers=headers, json=payload, timeout=15)
+        return jsonify({"status": r.status_code, "body": r.json()})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 @app.route('/api/chat', methods=['POST'])
 def chat():
     try:
