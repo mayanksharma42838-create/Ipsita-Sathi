@@ -428,7 +428,7 @@ async function sendMessage() {
         document.getElementById('typingIndicator').style.display = 'none';
 
         const reply = data.response || 'Kuch gadbad ho gayi... phir try karo.';
-        const displayReply = `💕 ${reply}`;
+        const displayReply = reply;
 
         addMessageToUI('bot', displayReply);
         saveLocal('bot', displayReply);
