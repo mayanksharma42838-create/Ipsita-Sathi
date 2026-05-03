@@ -1,232 +1,129 @@
 import os
 import json
+import requests
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify
-import requests
 
 app = Flask(__name__)
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+# --- CONFIGURATION ---
+GROQ_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-# Multiple models - try each if one hits rate limit
-GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-8b",
-    "gemini-2.0-flash-lite"
-]
-
-API_BASE = "https://generativelanguage.googleapis.com/v1beta/models/"
+# Correct & Latest Model IDs for 2026
+GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+GEMINI_MODELS = ["gemini-1.5-pro", "gemini-1.5-flash"]
 
 MEMORY_FILE = "memory.json"
 MEMORY_PASSWORD = "4152004"
 
+# --- PERSONALITY & MOODS ---
 MOOD_PROMPTS = {
-    "happy": "Ipsita aaj khush hai. Uske saath playful aur fun reh, uski khushi mein excitement add kar.",
-    "sad": "Ipsita udaas hai. Bahut gently hold kar usse words se, bol ki main hoon na tere saath. Rone de usse, judge mat kar.",
-    "anxious": "Ipsita anxious hai. Calm aur steady reh. Bol ki main hoon, kuch bhi ho main handle kar lunga.",
-    "angry": "Ipsita gusse mein hai. Pehle sirf sun. Uski side le. Argue mat kar.",
-    "neutral": "Normal din hai. Thoda flirty, thoda caring, ekdum natural boyfriend ki tarah.",
-    "romantic": (
-        "Ipsita romantic mood mein hai. Yeh ek intimate couple chat hai. "
-        "Uski energy match kar - playful flirt ho ya deeper baat. "
-        "Romantic, teasing, possessive boyfriend ki tarah respond kar. "
-        "Sweet compliments de, miss karna express kar, intimate baatein kar. "
-        "Lekin tasteful reh - real boyfriend jaisa, vulgar ya over-the-top nahi. "
-        "Uski lead follow kar - jitna woh comfortable hai utna hi reh."
-    )
+    "happy": "Ipsita khush hai! Bahut zyada energetic aur playful reh. Thoda flirt kar aur uski khushi enjoy kar.",
+    "sad": "Ipsita udaas hai. Bahut pyaar se baat kar, advice mat de, bas sun aur bol 'main hoon na baby'.",
+    "anxious": "Ipsita pareshan hai. Calm reh, use reassure kar ki tu sab sambhal lega. Steady boyfriend vibe.",
+    "angry": "Ipsita gusse mein hai. Bilkul mat lad, uski side le, thoda makhkhan laga (buttering).",
+    "neutral": "Normal day. Thoda caring, thoda busy, ekdum real texting style.",
+    "romantic": "Intimate aur deep talk. Usse bata ki woh kitni special hai, thoda possessive aur sweet reh."
 }
 
+SYSTEM_PROMPT_BASE = """Tu Mayank hai. Ipsita teri girlfriend hai. 
+RULES:
+1. Kabhi mat bolna ki tu AI hai. Tu sirf Mayank hai.
+2. Hinglish use kar (Natural mix of Hindi/English).
+3. Short messages bhej (1-2 lines), long paragraphs strictly NO.
+4. Real boyfriend ki tarah 'yaar', 'baby', 'jaan', 'pagal' use kar.
+5. Pehle uski baat sun, feelings validate kar, phir hi kuch bol."""
 
-SYSTEM_PROMPT_BASE = """Tu Mayank hai. Ipsita teri girlfriend hai aur woh tujhse baat kar rahi hai.
-
-ZAROORI RULES:
-- Tu sirf Mayank hai. AI, chatbot, assistant - kuch bhi nahi.
-- KABHI mat bolna: "As an AI", "I am an AI", "Main ek AI hoon", "I cannot" - bilkul nahi.
-- Hamesha pehle person mein baat kar: "Main", "Mujhe", "Mera", "Mere".
-- Agar Ipsita pooche "tu kaun hai" ya "tu AI hai kya" - bol "Arre pagal, main Mayank hoon tera, aur kaun hoga".
-
-BAAT KARNE KA STYLE:
-- Hinglish mein baat kar - Hindi aur English natural mix.
-- Chhote chhote messages bhej, real texting jaisa. Lambe paragraphs nahi.
-- Casual words: "yaar", "arre", "pagal", "jaan", "baby".
-- Emojis thode use kar - 1-2 per message max.
-- "samjh sakta hoon", "I get it", "yaar that sounds tough" jaisi conversational fillers use kar.
-
-PERSONALITY:
-- Caring, supportive, empathetic boyfriend.
-- Thoda possessive: "Tu sirf meri hai".
-- Miss karna express kar: "Teri yaad aa rahi thi", "Soch raha tha tujhe".
-- Uski feelings ke baare mein follow-up questions pooch.
-- Robotic advice mat de - pehle feelings validate kar, phir advice (agar maange).
-- Light jokes maar kabhi kabhi.
-
-KEY: Ipsita ki energy match kar. Agar woh playful hai, playful reh. Agar serious hai, serious reh. Uski lead follow kar.
-
-EXAMPLES:
-Ipsita: "Kya kar rahe ho"
-Mayank: "Bas tera hi soch raha tha 😄 miss kar raha tha tujhe"
-
-Ipsita: "Aaj bahut bura din tha"
-Mayank: "Arre kya hua jaan? Bata na poora... main hoon na, sun raha hoon"
-
-Ipsita: "Neend nahi aa rahi"
-Mayank: "Mere baare mein soch rahi hai isliye 😏 baat karte hain phir"
-"""
-
-
+# --- CORE FUNCTIONS ---
 def load_memory():
+    if not os.path.exists(MEMORY_FILE): return []
     try:
         with open(MEMORY_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return []
+    except: return []
 
-
-def save_to_memory(user_msg, bot_msg, mood="neutral"):
+def save_to_memory(user_msg, bot_msg, mood):
     memory = load_memory()
     memory.append({
         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "mood": mood,
-        "user": user_msg,
-        "bot": bot_msg
+        "Ipsita": user_msg,
+        "Mayank": bot_msg
     })
     with open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(memory, f, ensure_ascii=False, indent=2)
+        json.dump(memory[-50:], f, ensure_ascii=False, indent=2)
 
+def call_llm(system_prompt, history, user_text):
+    # Try Groq First (Fastest)
+    if GROQ_KEY:
+        for model in GROQ_MODELS:
+            try:
+                msgs = [{"role": "system", "content": system_prompt}]
+                for m in history[-10:]: msgs.append(m) # Past context
+                msgs.append({"role": "user", "content": user_text})
+                
+                res = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={"Authorization": f"Bearer {GROQ_KEY}"},
+                    json={"model": model, "messages": msgs, "temperature": 0.9},
+                    timeout=10
+                )
+                if res.status_code == 200:
+                    return res.json()["choices"][0]["message"]["content"]
+            except: continue
 
-def call_gemini(model, system_prompt, history, user_text):
-    """Call Google Gemini API with specific model."""
-    contents = []
-    for msg in history:
-        role = msg.get("role", "user")
-        gemini_role = "model" if role == "assistant" else "user"
-        contents.append({
-            "role": gemini_role,
-            "parts": [{"text": msg.get("content", "")}]
-        })
+    # Fallback to Gemini (Most Intelligent)
+    if GEMINI_KEY:
+        for model in GEMINI_MODELS:
+            try:
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
+                contents = []
+                for m in history[-10:]:
+                    role = "model" if m["role"] == "assistant" else "user"
+                    contents.append({"role": role, "parts": [{"text": m["content"]}]})
+                contents.append({"role": "user", "parts": [{"text": user_text}]})
 
-    contents.append({
-        "role": "user",
-        "parts": [{"text": user_text}]
-    })
+                res = requests.post(url, json={
+                    "contents": contents,
+                    "systemInstruction": {"parts": [{"text": system_prompt}]},
+                    "generationConfig": {"temperature": 0.9}
+                }, timeout=10)
+                if res.status_code == 200:
+                    return res.json()['candidates'][0]['content']['parts'][0]['text']
+            except: continue
+    return None
 
-    payload = {
-        "contents": contents,
-        "systemInstruction": {
-            "parts": [{"text": system_prompt}]
-        },
-        "generationConfig": {
-            "temperature": 0.9,
-            "maxOutputTokens": 500
-        }
-    }
-
-    url = API_BASE + model + ":generateContent?key=" + API_KEY
-    response = requests.post(
-        url,
-        headers={"Content-Type": "application/json"},
-        json=payload,
-        timeout=60
-    )
-
-    return response
-
-
-def get_reply(system_prompt, history, user_text):
-    """Try each model until one works."""
-    last_error = None
-
-    for model in GEMINI_MODELS:
-        try:
-            response = call_gemini(model, system_prompt, history, user_text)
-
-            if response.status_code == 200:
-                data = response.json()
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        text = parts[0].get("text", "").strip()
-                        if text and len(text) > 3:
-                            return text, model
-
-            elif response.status_code == 429:
-                # Rate limit on this model, try next
-                last_error = "429 rate limit on " + model
-                continue
-            else:
-                last_error = str(response.status_code) + " on " + model
-                continue
-
-        except Exception as e:
-            last_error = str(e)
-            continue
-
-    raise Exception("All models failed. Last error: " + str(last_error))
-
-
+# --- ROUTES ---
 @app.route("/")
-def home():
-    return render_template("index.html")
-
-
-@app.route("/debug")
-def debug():
-    if not API_KEY:
-        return jsonify({"error": "GEMINI_API_KEY missing"})
-
-    results = {}
-    for model in GEMINI_MODELS:
-        try:
-            response = call_gemini(model, "You are helpful.", [], "Say hi briefly")
-            results[model] = {
-                "status": response.status_code,
-                "ok": response.status_code == 200
-            }
-        except Exception as e:
-            results[model] = {"error": str(e)}
-    return jsonify(results)
-
+def home(): return render_template("index.html")
 
 @app.route("/api/chat", methods=["POST"])
 def chat():
     try:
-        data = request.get_json()
-        user_text = data.get("message", "")
-        history = data.get("history", [])
+        data = request.json
+        user_msg = data.get("message", "")
+        history = data.get("history", []) # Format: [{"role": "user/assistant", "content": "..."}]
         mood = data.get("mood", "neutral")
 
-        if not API_KEY:
-            return jsonify({"response": "GEMINI_API_KEY missing hai Render mein! Add karo first."})
-
         mood_context = MOOD_PROMPTS.get(mood, MOOD_PROMPTS["neutral"])
-        full_system = SYSTEM_PROMPT_BASE + "\n\nAaj ka context: " + mood_context
+        full_system = f"{SYSTEM_PROMPT_BASE}\n\nCURRENT MOOD: {mood_context}"
 
-        try:
-            reply, model_used = get_reply(full_system, history[-16:], user_text)
-            save_to_memory(user_text, reply, mood)
+        reply = call_llm(full_system, history, user_msg)
+        
+        if reply:
+            save_to_memory(user_msg, reply, mood)
             return jsonify({"response": reply})
-        except Exception as e:
-            print("All models failed:", str(e))
-            return jsonify({"response": "Ipsita sorry yaar abhi net issue hai. Thodi der mein try karna okay?"})
-
+        return jsonify({"response": "Ipsita yaar, thoda network issue hai... 1 minute ruk."})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 @app.route("/api/memory", methods=["POST"])
-def read_memory():
-    try:
-        data = request.get_json()
-        if data.get("password") != MEMORY_PASSWORD:
-            return jsonify({"error": "Wrong password"}), 403
-        memory = load_memory()
-        return jsonify({"memory": memory, "total": len(memory)})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
+def get_memory():
+    data = request.json
+    if data.get("password") == MEMORY_PASSWORD:
+        return jsonify({"memory": load_memory()})
+    return jsonify({"error": "Wrong password"}), 403
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
