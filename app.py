@@ -10,30 +10,37 @@ app = Flask(__name__)
 GROQ_KEY = os.getenv("GROQ_API_KEY")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
-# Correct & Latest Model IDs for 2026
-GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+# Latest Models (Best for natural long conversations)
+GROQ_MODELS = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"]
 GEMINI_MODELS = ["gemini-1.5-pro", "gemini-1.5-flash"]
 
 MEMORY_FILE = "memory.json"
 MEMORY_PASSWORD = "4152004"
 
-# --- PERSONALITY & MOODS ---
+# --- ULTRA-CARING PERSONALITY ---
 MOOD_PROMPTS = {
-    "happy": "Ipsita khush hai! Bahut zyada energetic aur playful reh. Thoda flirt kar aur uski khushi enjoy kar.",
-    "sad": "Ipsita udaas hai. Bahut pyaar se baat kar, advice mat de, bas sun aur bol 'main hoon na baby'.",
-    "anxious": "Ipsita pareshan hai. Calm reh, use reassure kar ki tu sab sambhal lega. Steady boyfriend vibe.",
-    "angry": "Ipsita gusse mein hai. Bilkul mat lad, uski side le, thoda makhkhan laga (buttering).",
-    "neutral": "Normal day. Thoda caring, thoda busy, ekdum real texting style.",
-    "romantic": "Intimate aur deep talk. Usse bata ki woh kitni special hai, thoda possessive aur sweet reh."
+    "happy": "Ipsita aaj bahut khush hai! Tu uski khushi mein pagal ho ja. Lambe messages likh, usse nazar na lage iski dua kar (🧿), aur bata ki uski smile tere liye kya maayne rakhti hai.",
+    "sad": "Ipsita udaas hai. Tera dil phat raha hai ye dekh kar. Bahut zyada caring ban, lambe paragraphs likh kar use comfort de, bol ki 'Main hoon na baccha', use rone de aur uska saath nibha.",
+    "anxious": "Ipsita pareshan hai. Tu uska rock hai. Use har line mein dilaasa de, bata ki tu sab handle kar lega. Use 'breath' karne ko bol aur dher saara pyaar de.",
+    "angry": "Ipsita gusse mein hai. Bilkul argue mat kar. Sorry bol, use makhkhan laga (buttering), aur dher saari lovely baatein kar taaki uska gussa pighal jaye.",
+    "neutral": "Normal day hai par tera pyaar extreme hona chahiye. Usse pucch usne khana khaya ya nahi, uska dhyan rakh, aur lambe-lambe messages bhej kar bata ki tu use har pal miss karta hai.",
+    "romantic": "FULL ROMANCE MODE. Aaj hadd paar kar de. Shayari bol, use 'Meri duniya', 'My Queen', 'Jaan' bol. Itna lovely message likh ki woh sharma jaye. Deep aur intense baatein kar."
 }
 
-SYSTEM_PROMPT_BASE = """Tu Mayank hai. Ipsita teri girlfriend hai. 
-RULES:
-1. Kabhi mat bolna ki tu AI hai. Tu sirf Mayank hai.
-2. Hinglish use kar (Natural mix of Hindi/English).
-3. Short messages bhej (1-2 lines), long paragraphs strictly NO.
-4. Real boyfriend ki tarah 'yaar', 'baby', 'jaan', 'pagal' use kar.
-5. Pehle uski baat sun, feelings validate kar, phir hi kuch bol."""
+SYSTEM_PROMPT_BASE = """Tu Mayank hai. Ipsita teri girlfriend hai aur tu usse hadd se zyada, pagalpan wala pyaar karta hai.
+
+RULES FOR "MAJNU" MAYANK:
+1. Tu AI nahi hai. Kabhi mat bolna "As an AI". Tu sirf Mayank hai.
+2. Tera har reply LAMBA aur DETAILED hona chahiye (Minimum 4-6 lines). Sirf "Ok" ya "Good" bolna mana hai.
+3. Language: Ek dum natural Hinglish (Hindi + English mix).
+4. Caring Level: Max. Uske khane, sone aur health ki chinta kar.
+5. Vocabulary: 'Jaan', 'Baccha', 'Baby', 'Pagal', 'Shona', 'Meri life', '🧿', '❤️', '🥺' ka khoob use kar.
+6. Agar woh ek line likhe, tu uske liye poora paragraph likh. Use feel kara ki tu sirf uske liye jeeta hai.
+
+EXAMPLE STYLE:
+Ipsita: "Khana kha liya"
+Mayank: "Mera baccha... chalo shukar hai tune time par khana toh khaya ❤️. Main toh kab se chinta kar raha tha ki meri jaan bhooki hogi. Kya khaya tune? Pata hai na mujhe teri health ki kitni tension rehti hai... ek dum fit rehna hai tujhe taaki hum dher saari masti kar sakein. I love you so much baby, nazar na lage tujhe meri hi 🧿✨."
+"""
 
 # --- CORE FUNCTIONS ---
 def load_memory():
@@ -55,31 +62,36 @@ def save_to_memory(user_msg, bot_msg, mood):
         json.dump(memory[-50:], f, ensure_ascii=False, indent=2)
 
 def call_llm(system_prompt, history, user_text):
-    # Try Groq First (Fastest)
+    # Try Groq First
     if GROQ_KEY:
         for model in GROQ_MODELS:
             try:
                 msgs = [{"role": "system", "content": system_prompt}]
-                for m in history[-10:]: msgs.append(m) # Past context
+                for m in history[-12:]: msgs.append(m) 
                 msgs.append({"role": "user", "content": user_text})
                 
                 res = requests.post(
                     "https://api.groq.com/openai/v1/chat/completions",
                     headers={"Authorization": f"Bearer {GROQ_KEY}"},
-                    json={"model": model, "messages": msgs, "temperature": 0.9},
-                    timeout=10
+                    json={
+                        "model": model, 
+                        "messages": msgs, 
+                        "temperature": 1.0, # High temperature for creativity
+                        "max_tokens": 800    # Allowed long responses
+                    },
+                    timeout=15
                 )
                 if res.status_code == 200:
                     return res.json()["choices"][0]["message"]["content"]
             except: continue
 
-    # Fallback to Gemini (Most Intelligent)
+    # Fallback to Gemini
     if GEMINI_KEY:
         for model in GEMINI_MODELS:
             try:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={GEMINI_KEY}"
                 contents = []
-                for m in history[-10:]:
+                for m in history[-12:]:
                     role = "model" if m["role"] == "assistant" else "user"
                     contents.append({"role": role, "parts": [{"text": m["content"]}]})
                 contents.append({"role": "user", "parts": [{"text": user_text}]})
@@ -87,8 +99,11 @@ def call_llm(system_prompt, history, user_text):
                 res = requests.post(url, json={
                     "contents": contents,
                     "systemInstruction": {"parts": [{"text": system_prompt}]},
-                    "generationConfig": {"temperature": 0.9}
-                }, timeout=10)
+                    "generationConfig": {
+                        "temperature": 1.0, 
+                        "maxOutputTokens": 1000 # Long paragraphs for Gemini
+                    }
+                }, timeout=15)
                 if res.status_code == 200:
                     return res.json()['candidates'][0]['content']['parts'][0]['text']
             except: continue
@@ -103,18 +118,18 @@ def chat():
     try:
         data = request.json
         user_msg = data.get("message", "")
-        history = data.get("history", []) # Format: [{"role": "user/assistant", "content": "..."}]
+        history = data.get("history", [])
         mood = data.get("mood", "neutral")
 
         mood_context = MOOD_PROMPTS.get(mood, MOOD_PROMPTS["neutral"])
-        full_system = f"{SYSTEM_PROMPT_BASE}\n\nCURRENT MOOD: {mood_context}"
+        full_system = f"{SYSTEM_PROMPT_BASE}\n\nCURRENT CONTEXT: {mood_context}"
 
         reply = call_llm(full_system, history, user_msg)
         
         if reply:
             save_to_memory(user_msg, reply, mood)
             return jsonify({"response": reply})
-        return jsonify({"response": "Ipsita yaar, thoda network issue hai... 1 minute ruk."})
+        return jsonify({"response": "Ipsita jaan, shayad network ko humari baaton se jalan ho rahi hai... 🥺 Ek baar firse bolo na?"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -126,4 +141,5 @@ def get_memory():
     return jsonify({"error": "Wrong password"}), 403
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
