@@ -52,7 +52,7 @@
         .top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         h1 { color: var(--primary); font-size: 1.6em; margin: 0; font-weight: bold; }
         
-        .mood-buttons { display: flex; overflow-x: auto; gap: 10px; padding: 5px 0 15px; scrollbar-width: none; }
+        .mood-buttons { display: flex; overflow-x: auto; gap: 10px; padding: 5px 0 10px; scrollbar-width: none; }
         .mood-btn {
             flex: 0 0 auto; padding: 10px 16px; border-radius: 20px;
             background: var(--chat-bg); border: 2px solid var(--input-border);
@@ -60,8 +60,14 @@
         }
         .mood-btn.active { background: var(--primary); color: white; border-color: var(--primary); transform: scale(1.05); }
 
+        .intensity-box {
+            margin: 10px 0; background: var(--user-bubble); padding: 10px; border-radius: 15px;
+            display: none; border: 1px dashed var(--primary);
+        }
+        input[type="range"] { width: 100%; accent-color: var(--primary); cursor: pointer; }
+
         .chat-messages {
-            height: 450px; overflow-y: auto;
+            height: 400px; overflow-y: auto;
             border: 2px solid var(--input-border);
             padding: 15px; margin-bottom: 15px;
             background-color: var(--chat-bg); border-radius: 20px;
@@ -85,7 +91,6 @@
             background: var(--primary); color: white; cursor: pointer; 
             font-size: 1.2em; display: flex; align-items: center; justify-content: center;
         }
-        .btn-send:hover { transform: rotate(15deg) scale(1.1); background: var(--primary-dark); }
         
         #typingIndicator { font-size: 0.85em; color: var(--primary); text-align: left; margin: 5px 10px; font-style: italic; }
         .bottom-btns { display: flex; gap: 10px; margin-top: 15px; }
@@ -96,9 +101,6 @@
         
         #memoryModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(5px); }
         #memoryBox { background: var(--card); width: 95%; max-width: 500px; padding: 25px; border-radius: 25px; max-height: 85vh; overflow-y: auto; }
-        
-        .chat-messages::-webkit-scrollbar { width: 4px; }
-        .chat-messages::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -124,6 +126,12 @@
             <button class="mood-btn" data-mood="sad" onclick="setMood(this)">😢 Udaas</button>
             <button class="mood-btn" data-mood="romantic" onclick="setMood(this)">💕 Romantic</button>
             <button class="mood-btn" data-mood="angry" onclick="setMood(this)">😤 Gussa</button>
+            <button class="mood-btn" data-mood="dark" onclick="setMood(this)" style="background:#4a148c; color:white;">🔥 Dark</button>
+        </div>
+
+        <div id="intensitySection" class="intensity-box">
+            <label id="intensityLabel" style="font-size:0.8em; font-weight:bold;">Romantic Level: 3 (Balanced)</label>
+            <input type="range" id="romanticIntensity" min="1" max="5" value="3" oninput="updateIntensity(this.value)">
         </div>
 
         <div class="chat-messages" id="chatMessages"></div>
@@ -141,11 +149,11 @@
     </div>
 </div>
 
-<!-- Modal -->
+<!-- Memory Modal -->
 <div id="memoryModal">
     <div id="memoryBox">
         <h3 style="color:var(--primary); text-align:center;">🔒 Humari Haseen Yaadein</h3>
-        <div id="memoryContent" style="font-size: 0.95em; text-align: left; line-height: 1.6;"></div>
+        <div id="memoryContent"></div>
         <button onclick="closeMemory()" style="margin-top:20px; width:100%; padding:12px; border-radius:15px; border:none; background:var(--primary); color:white; font-weight:bold; cursor:pointer;">Close 🌸</button>
     </div>
 </div>
@@ -153,21 +161,41 @@
 <script>
     let conversationHistory = [];
     let currentMood = 'neutral';
+    let currentIntensity = 3;
 
     function checkPassword() {
         if(document.getElementById('password').value === 'ipsita') {
             document.getElementById('passwordForm').style.display = 'none';
             document.getElementById('chatInterface').style.display = 'block';
-            addBotMessage("Hi meri jaan! ❤️ Kab se tumhara intezar kar raha tha... Aaj kaisa feel kar rahi ho tum? Mere layak kuch khidmat? 😉🧿");
+            addBotMessage("Hi meri jaan! ❤️ Aaj kaisa feel kar rahi ho tum? Mayank hamesha tumhara dhyan rakhne ke liye yahan hai. ✨🧿");
         } else {
-            alert("Oye pagal! Galat password. Sirf Ipsita hi mere dil mein aa sakti hai! ❤️");
+            alert("Oye pagal! Galat password. 😉");
         }
     }
 
     function setMood(btn) {
+        const mood = btn.dataset.mood;
+        if (mood === "dark") {
+            const pwd = prompt("Dark Mode Password?");
+            if (pwd !== "1072005") {
+                alert("Galat password! Naughty Ipsita! 😉❤️");
+                return;
+            }
+            alert("Dark Mode ON. Yahan koi filters nahi hain... 🔥");
+        }
+
         document.querySelectorAll('.mood-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        currentMood = btn.dataset.mood;
+        currentMood = mood;
+        
+        // Show/Hide intensity slider for Romantic mood
+        document.getElementById('intensitySection').style.display = (mood === "romantic") ? "block" : "none";
+    }
+
+    function updateIntensity(val) {
+        currentIntensity = val;
+        const labels = ["Innocent", "Sweet", "Balanced", "Spicy", "Intense"];
+        document.getElementById('intensityLabel').textContent = `Romantic Level: ${val} (${labels[val-1]})`;
     }
 
     function addBotMessage(text) {
@@ -207,6 +235,7 @@
                 body: JSON.stringify({
                     message: text,
                     mood: currentMood,
+                    intensity: currentIntensity,
                     history: conversationHistory
                 })
             });
@@ -217,58 +246,49 @@
                 addBotMessage(data.response);
                 conversationHistory.push({role: "user", content: text});
                 conversationHistory.push({role: "assistant", content: data.response});
-                // Long-term history maintenance
                 if(conversationHistory.length > 20) conversationHistory = conversationHistory.slice(-20);
             }
         } catch(e) {
             document.getElementById('typingIndicator').style.display = 'none';
-            addBotMessage("Maaf karna jaan, shayad network ko humari baaton se jalan ho rahi hai. Ek baar firse koshish karo na? 🥺❤️");
+            addBotMessage("Network issue hai jaan, ek baar firse try karo? ❤️");
         }
     }
 
     function toggleNight() {
-        const isDark = document.body.classList.toggle('dark');
-        document.querySelector('.top-bar button').textContent = isDark ? '☀️' : '🌙';
+        document.body.classList.toggle('dark');
     }
 
     function clearChat() {
-        if(confirm("Kya sach mein sab kuch mita dena chahti ho? 🥺")) {
+        if(confirm("Yaadein mita dein? 🥺")) {
             document.getElementById('chatMessages').innerHTML = '';
             conversationHistory = [];
-            addBotMessage("Sab saaf ho gaya, par mere dil mein tumhari jagah hamesha rahegi! Naye sire se baat karte hain? ✨");
         }
     }
 
     async function openMemory() {
-        const pwd = prompt("Secret code batao yaadein kholne ke liye:");
+        const pwd = prompt("Secret code batao:");
         if(!pwd) return;
-        
         document.getElementById('memoryModal').style.display = 'flex';
-        document.getElementById('memoryContent').innerHTML = "<p style='text-align:center;'>Puraani baatein dhoond raha hoon... ⏳❤️</p>";
+        document.getElementById('memoryContent').innerHTML = "Loading... ⏳";
 
-        try {
-            const res = await fetch('/api/memory', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({password: pwd})
+        const res = await fetch('/api/memory', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({password: pwd})
+        });
+        const data = await res.json();
+        
+        if(data.memory) {
+            let html = "";
+            data.memory.slice().reverse().forEach(m => {
+                html += `<div style="background:#fff0f3; margin-bottom:10px; padding:10px; border-radius:15px; border-left:4px solid var(--primary);">
+                            <b>Ipsita:</b> ${m.Ipsita || m.user}<br>
+                            <b style="color:var(--primary)">Mayank:</b> ${m.Mayank || m.bot}
+                         </div>`;
             });
-            const data = await res.json();
-            
-            if(data.memory) {
-                let html = "";
-                data.memory.slice().reverse().forEach(m => {
-                    html += `<div style="background:#fff0f3; margin-bottom:15px; padding:15px; border-radius:15px; border-left:5px solid var(--primary);">
-                                <span style="font-size:0.7em; color:#880e4f;">🕒 ${m.timestamp || 'Kuch samay pehle'}</span><br>
-                                <b style="color:#ad1457;">Ipsita:</b> ${m.Ipsita || m.user}<br>
-                                <b style="color:var(--primary)">Mayank:</b> ${m.Mayank || m.bot}
-                             </div>`;
-                });
-                document.getElementById('memoryContent').innerHTML = html || "<p style='text-align:center;'>Abhi tak humne koi yaadein nahi banayi? Chalo shuru karte hain! 🌸</p>";
-            } else {
-                document.getElementById('memoryContent').innerHTML = "<p style='text-align:center; color:red;'>Galat password! Sirf Mayank ko haq hai ye yaadein dekhne ka. ❌</p>";
-            }
-        } catch(e) {
-            document.getElementById('memoryContent').innerHTML = "Server se connect nahi ho paya. ☹️";
+            document.getElementById('memoryContent').innerHTML = html || "Koi yaadein nahi hain abhi.";
+        } else {
+            document.getElementById('memoryContent').innerHTML = "Wrong Password! ❌";
         }
     }
 
@@ -276,6 +296,5 @@
         document.getElementById('memoryModal').style.display = 'none';
     }
 </script>
-
 </body>
 </html>
