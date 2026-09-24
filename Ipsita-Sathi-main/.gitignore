@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.pyc
+instance/
+media_storage/uploads/*
+media_storage/themes/*
+media_storage/doodles/*
+!media_storage/uploads/.gitkeep
+!media_storage/themes/.gitkeep
+!media_storage/doodles/.gitkeep
+node_modules/
+www/
+android/
+ios/
+.env
+*.db
+.DS_Store

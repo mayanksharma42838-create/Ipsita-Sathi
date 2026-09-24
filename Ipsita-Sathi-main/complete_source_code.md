@@ -1,0 +1,4495 @@
+# Ipsita-Sathi — Complete Source Code
+
+Single consolidated dump of every project source file with exact relative paths and full contents.
+
+**Project root:** `Ipsita-Sathi-main/`
+**File count:** 28
+
+## Table of contents
+
+1. `app/__init__.py`
+2. `app/auth_helpers.py`
+3. `app/blueprints/__init__.py`
+4. `app/blueprints/api.py`
+5. `app/blueprints/auth.py`
+6. `app/config.py`
+7. `app/crypto_utils.py`
+8. `app/extensions.py`
+9. `app/models.py`
+10. `app/sockets.py`
+11. `apply_fixes.py`
+12. `capacitor.config.json`
+13. `debugger_pro.py`
+14. `package.json`
+15. `README.md`
+16. `requirements.txt`
+17. `run.py`
+18. `scripts/prepare-www.js`
+19. `static/css/app.css`
+20. `static/js/app.js`
+21. `static/js/check_links.py`
+22. `static/js/crypto.js`
+23. `static/js/doodle.js`
+24. `static/js/filmtv.js`
+25. `static/js/offline.js`
+26. `static/js/privacy.js`
+27. `templates/index.html`
+28. `wsgi.py`
+
+---
+
+## File: `app/__init__.py`
+
+- **Path:** `app/__init__.py`
+- **Name:** `__init__.py`
+
+```python
+from flask import Flask, render_template
+from flask_cors import CORS
+
+from app.config import BASE_DIR, Config
+from app.extensions import db, socketio
+
+
+def create_app(config_class=Config):
+    app = Flask(
+        __name__,
+        template_folder=str(BASE_DIR / "templates"),
+        static_folder=str(BASE_DIR / "static"),
+        static_url_path="/static",
+    )
+    app.config.from_object(config_class)
+    CORS(app, supports_credentials=True)
+
+    db.init_app(app)
+    socketio.init_app(app)
+
+    from app.blueprints.auth import bp as auth_bp
+    from app.blueprints.api import bp as api_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(api_bp)
+
+    # Import handlers without rebinding local name `app` (import app.X would!)
+    from app import sockets as _socket_handlers  # noqa: F401
+
+    @app.route("/")
+    def index():
+        return render_template("index.html")
+
+    @app.after_request
+    def privacy_headers(response):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "display-capture=()"
+        return response
+
+    with app.app_context():
+        db.create_all()
+        _ensure_filmtv_columns()
+        _start_expiry_sweeper(app)
+
+    return app
+
+
+def _ensure_filmtv_columns() -> None:
+    """Add FilmTV columns to existing SQLite rooms tables (create_all won't alter)."""
+    from sqlalchemy import text
+
+    cols = {
+        "filmtv_source_type": "VARCHAR(32)",
+        "filmtv_source": "VARCHAR(2048)",
+        "filmtv_title": "VARCHAR(256)",
+        "filmtv_playing": "BOOLEAN DEFAULT 0 NOT NULL",
+        "filmtv_position": "FLOAT DEFAULT 0 NOT NULL",
+        "filmtv_updated_at": "DATETIME",
+    }
+    try:
+        existing = {
+            row[1]
+            for row in db.session.execute(text("PRAGMA table_info(rooms)")).fetchall()
+        }
+        for name, typedef in cols.items():
+            if name not in existing:
+                db.session.execute(text(f"ALTER TABLE rooms ADD COLUMN {name} {typedef}"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _start_expiry_sweeper(app: Flask) -> None:
+    """Periodically purge expired messages from DB + disk."""
+    import threading
+    import time
+    from pathlib import Path as P
+
+    from app.models import Message, utcnow
+
+    def loop():
+        while True:
+            time.sleep(15)
+            with app.app_context():
+                try:
+                    now = utcnow()
+                    expired = Message.query.filter(
+                        Message.deleted.is_(False),
+                        Message.expires_at.isnot(None),
+                        Message.expires_at <= now,
+                    ).all()
+                    if not expired:
+                        continue
+                    by_room: dict[str, list[int]] = {}
+                    for msg in expired:
+                        msg.deleted = True
+                        if msg.media_path:
+                            try:
+                                P(msg.media_path).unlink(missing_ok=True)
+                            except OSError:
+                                pass
+                            msg.media_path = None
+                        rid = msg.room.room_id if msg.room else None
+                        if rid:
+                            by_room.setdefault(rid, []).append(msg.id)
+                    db.session.commit()
+                    for rid, ids in by_room.items():
+                        socketio.emit("messages_expired", {"ids": ids}, room=f"room:{rid}")
+                except Exception:
+                    db.session.rollback()
+
+    t = threading.Thread(target=loop, name="expiry-sweeper", daemon=True)
+    t.start()
+```
+
+---
+
+## File: `app/auth_helpers.py`
+
+- **Path:** `app/auth_helpers.py`
+- **Name:** `auth_helpers.py`
+
+```python
+from __future__ import annotations
+
+from functools import wraps
+
+from flask import g, jsonify, request, session
+
+from app.extensions import db
+from app.models import Member, Room, utcnow
+
+
+def get_member_from_request() -> Member | None:
+    token = (
+        request.headers.get("X-Session-Token")
+        or request.args.get("token")
+        or session.get("member_token")
+    )
+    if not token:
+        return None
+    member = Member.query.filter_by(session_token=token).first()
+    if member:
+        member.last_seen = utcnow()
+        db.session.commit()
+    return member
+
+
+def login_required(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        member = get_member_from_request()
+        if not member:
+            return jsonify({"error": "Unauthorized"}), 401
+        g.member = member
+        g.room = member.room
+        return fn(*args, **kwargs)
+
+    return wrapper
+
+
+def room_member_count(room: Room) -> int:
+    return Member.query.filter_by(room_pk=room.id).count()
+```
+
+---
+
+## File: `app/blueprints/__init__.py`
+
+- **Path:** `app/blueprints/__init__.py`
+- **Name:** `__init__.py`
+
+```python
+"""Package marker for auth + api blueprints."""
+```
+
+---
+
+## File: `app/blueprints/api.py`
+
+- **Path:** `app/blueprints/api.py`
+- **Name:** `api.py`
+
+```python
+"""Messages, media, themes, disappearing cleanup — no export endpoints."""
+
+from __future__ import annotations
+
+import os
+import uuid
+from datetime import timedelta
+from pathlib import Path
+
+from flask import Blueprint, current_app, g, jsonify, request, send_file
+from werkzeug.utils import secure_filename
+
+from app.auth_helpers import login_required
+from app.extensions import db, socketio
+from app.models import Message, utcnow
+
+bp = Blueprint("api", __name__, url_prefix="/api")
+
+
+def _purge_expired(room_pk: int) -> list[int]:
+    now = utcnow()
+    expired = Message.query.filter(
+        Message.room_pk == room_pk,
+        Message.deleted.is_(False),
+        Message.expires_at.isnot(None),
+        Message.expires_at <= now,
+    ).all()
+    ids = []
+    for msg in expired:
+        msg.deleted = True
+        if msg.media_path:
+            try:
+                Path(msg.media_path).unlink(missing_ok=True)
+            except OSError:
+                pass
+            msg.media_path = None
+        ids.append(msg.id)
+    if ids:
+        db.session.commit()
+    return ids
+
+
+@bp.get("/messages")
+@login_required
+def list_messages():
+    purged = _purge_expired(g.room.id)
+    if purged:
+        socketio.emit(
+            "messages_expired",
+            {"ids": purged},
+            room=f"room:{g.room.room_id}",
+        )
+
+    rows = (
+        Message.query.filter_by(room_pk=g.room.id, deleted=False)
+        .order_by(Message.created_at.asc())
+        .limit(500)
+        .all()
+    )
+    out = []
+    for m in rows:
+        if m.is_expired():
+            continue
+        out.append(
+            {
+                "id": m.id,
+                "sender_id": m.sender_id,
+                "sender_name": m.sender.display_name if m.sender else "Unknown",
+                "ciphertext": m.ciphertext,
+                "msg_type": m.msg_type,
+                "media_url": f"/api/media/{m.id}" if m.media_path else None,
+                "media_mime": m.media_mime,
+                "created_at": m.created_at.isoformat(),
+                "expires_at": m.expires_at.isoformat() if m.expires_at else None,
+            }
+        )
+    return jsonify({"messages": out})
+
+
+@bp.post("/messages")
+@login_required
+def post_message():
+    data = request.get_json(silent=True) or {}
+    ciphertext = data.get("ciphertext")
+    msg_type = data.get("msg_type", "text")
+    ttl_seconds = data.get("ttl_seconds")
+
+    if not ciphertext:
+        return jsonify({"error": "ciphertext required"}), 400
+    if msg_type not in ("text", "image", "voice", "system"):
+        return jsonify({"error": "invalid msg_type"}), 400
+
+    expires_at = None
+    if ttl_seconds is not None:
+        try:
+            ttl = int(ttl_seconds)
+            if ttl > 0:
+                expires_at = utcnow() + timedelta(seconds=ttl)
+        except (TypeError, ValueError):
+            return jsonify({"error": "invalid ttl_seconds"}), 400
+
+    msg = Message(
+        room_pk=g.room.id,
+        sender_id=g.member.id,
+        ciphertext=ciphertext,
+        msg_type=msg_type,
+        expires_at=expires_at,
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    payload = {
+        "id": msg.id,
+        "sender_id": g.member.id,
+        "sender_name": g.member.display_name,
+        "ciphertext": msg.ciphertext,
+        "msg_type": msg.msg_type,
+        "media_url": None,
+        "media_mime": None,
+        "created_at": msg.created_at.isoformat(),
+        "expires_at": msg.expires_at.isoformat() if msg.expires_at else None,
+    }
+    socketio.emit("new_message", payload, room=f"room:{g.room.room_id}")
+    return jsonify({"ok": True, "message": payload})
+
+
+@bp.post("/media")
+@login_required
+def upload_media():
+    """Accept encrypted media blob + ciphertext caption; store locally."""
+    if "file" not in request.files:
+        return jsonify({"error": "file required"}), 400
+
+    f = request.files["file"]
+    ciphertext = request.form.get("ciphertext") or ""
+    msg_type = request.form.get("msg_type", "image")
+    media_mime = request.form.get("media_mime") or f.mimetype or "application/octet-stream"
+    ttl_seconds = request.form.get("ttl_seconds")
+
+    if msg_type not in ("image", "voice"):
+        return jsonify({"error": "msg_type must be image or voice"}), 400
+
+    original = secure_filename(f.filename or "upload.bin")
+    ext = Path(original).suffix.lower() or ".bin"
+    allowed = current_app.config["ALLOWED_IMAGE_EXT"] | current_app.config["ALLOWED_AUDIO_EXT"] | {".bin", ".enc"}
+    if ext not in allowed:
+        return jsonify({"error": "file type not allowed"}), 400
+
+    filename = f"{g.room.room_id}_{uuid.uuid4().hex}{ext}"
+    dest = Path(current_app.config["UPLOADS_DIR"]) / filename
+    f.save(dest)
+
+    expires_at = None
+    if ttl_seconds:
+        try:
+            ttl = int(ttl_seconds)
+            if ttl > 0:
+                expires_at = utcnow() + timedelta(seconds=ttl)
+        except (TypeError, ValueError):
+            pass
+
+    msg = Message(
+        room_pk=g.room.id,
+        sender_id=g.member.id,
+        ciphertext=ciphertext or "media",
+        msg_type=msg_type,
+        media_path=str(dest),
+        media_mime=media_mime,
+        expires_at=expires_at,
+    )
+    db.session.add(msg)
+    db.session.commit()
+
+    payload = {
+        "id": msg.id,
+        "sender_id": g.member.id,
+        "sender_name": g.member.display_name,
+        "ciphertext": msg.ciphertext,
+        "msg_type": msg.msg_type,
+        "media_url": f"/api/media/{msg.id}",
+        "media_mime": msg.media_mime,
+        "created_at": msg.created_at.isoformat(),
+        "expires_at": msg.expires_at.isoformat() if msg.expires_at else None,
+    }
+    socketio.emit("new_message", payload, room=f"room:{g.room.room_id}")
+    return jsonify({"ok": True, "message": payload})
+
+
+@bp.get("/media/<int:message_id>")
+@login_required
+def get_media(message_id: int):
+    msg = Message.query.filter_by(id=message_id, room_pk=g.room.id, deleted=False).first()
+    if not msg or not msg.media_path or msg.is_expired():
+        return jsonify({"error": "not found"}), 404
+    if not os.path.isfile(msg.media_path):
+        return jsonify({"error": "file missing"}), 404
+    return send_file(msg.media_path, mimetype=msg.media_mime or "application/octet-stream")
+
+
+@bp.post("/theme")
+@login_required
+def set_theme():
+    data = request.get_json(silent=True) or {}
+    preset = (data.get("theme_preset") or "").strip()
+    if preset:
+        g.room.theme_preset = preset[:64]
+        db.session.commit()
+        socketio.emit(
+            "theme_updated",
+            {"theme_preset": g.room.theme_preset, "theme_path": g.room.theme_path},
+            room=f"room:{g.room.room_id}",
+        )
+        return jsonify({"ok": True, "theme_preset": g.room.theme_preset})
+    return jsonify({"error": "theme_preset required"}), 400
+
+
+@bp.post("/theme/upload")
+@login_required
+def upload_theme():
+    if "file" not in request.files:
+        return jsonify({"error": "file required"}), 400
+    f = request.files["file"]
+    original = secure_filename(f.filename or "theme.jpg")
+    ext = Path(original).suffix.lower()
+    if ext not in current_app.config["ALLOWED_IMAGE_EXT"]:
+        return jsonify({"error": "images only"}), 400
+
+    filename = f"theme_{g.room.room_id}_{uuid.uuid4().hex}{ext}"
+    dest = Path(current_app.config["THEMES_DIR"]) / filename
+    f.save(dest)
+
+    # remove previous custom theme file
+    if g.room.theme_path:
+        try:
+            Path(g.room.theme_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    g.room.theme_path = str(dest)
+    g.room.theme_preset = "custom"
+    db.session.commit()
+
+    url = f"/api/theme/background"
+    socketio.emit(
+        "theme_updated",
+        {"theme_preset": "custom", "theme_url": url},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "theme_url": url, "theme_preset": "custom"})
+
+
+@bp.get("/theme/background")
+@login_required
+def theme_background():
+    if not g.room.theme_path or not os.path.isfile(g.room.theme_path):
+        return jsonify({"error": "no custom theme"}), 404
+    return send_file(g.room.theme_path)
+
+
+@bp.post("/instagram/session")
+@login_required
+def save_instagram_session():
+    """Store encrypted Instagram session blob shared for co-viewing (ciphertext from client)."""
+    data = request.get_json(silent=True) or {}
+    enc = data.get("session_ciphertext")
+    if not enc:
+        return jsonify({"error": "session_ciphertext required"}), 400
+    g.room.instagram_session_enc = enc
+    db.session.commit()
+    socketio.emit(
+        "instagram_session_ready",
+        {"ready": True},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True})
+
+
+@bp.get("/instagram/session")
+@login_required
+def get_instagram_session():
+    return jsonify({"session_ciphertext": g.room.instagram_session_enc})
+
+
+@bp.post("/instagram/sync")
+@login_required
+def sync_instagram_url():
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()[:1024]
+    g.room.instagram_sync_url = url or None
+    db.session.commit()
+    socketio.emit(
+        "instagram_sync",
+        {"url": url, "by": g.member.display_name},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "url": url})
+
+
+@bp.post("/doodle/save")
+@login_required
+def save_doodle():
+    if "file" not in request.files:
+        return jsonify({"error": "file required"}), 400
+    f = request.files["file"]
+    filename = f"doodle_{g.room.room_id}_{uuid.uuid4().hex}.png"
+    dest = Path(current_app.config["DOODLES_DIR"]) / filename
+    f.save(dest)
+    if g.room.doodle_path:
+        try:
+            Path(g.room.doodle_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+    g.room.doodle_path = str(dest)
+    db.session.commit()
+    socketio.emit(
+        "doodle_saved",
+        {"url": "/api/doodle/latest"},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "url": "/api/doodle/latest"})
+
+
+@bp.get("/doodle/latest")
+@login_required
+def get_doodle():
+    if not g.room.doodle_path or not os.path.isfile(g.room.doodle_path):
+        return jsonify({"error": "no doodle"}), 404
+    return send_file(g.room.doodle_path, mimetype="image/png")
+
+
+# ─── FilmTV Watch Party (native HTML5 only) ─────────────────────────
+
+_BLOCKED_VIDEO_HOSTS = (
+    "youtube.com",
+    "youtu.be",
+    "youtube-nocookie.com",
+    "googlevideo.com",
+    "vimeo.com",
+    "dailymotion.com",
+    "twitch.tv",
+    "netflix.com",
+    "primevideo.com",
+    "hotstar.com",
+    "disneyplus.com",
+)
+
+
+def _is_blocked_media_host(url: str) -> bool:
+    from urllib.parse import urlparse
+
+    try:
+        host = (urlparse(url).hostname or "").lower()
+    except Exception:
+        return True
+    if not host:
+        return True
+    return any(host == b or host.endswith("." + b) for b in _BLOCKED_VIDEO_HOSTS)
+
+
+def _looks_like_direct_video(url: str) -> bool:
+    """Prefer direct file URLs; allow CORS-friendly media endpoints without page hosts."""
+    from urllib.parse import urlparse
+
+    path = (urlparse(url).path or "").lower()
+    if any(path.endswith(ext) for ext in current_app.config["ALLOWED_VIDEO_EXT"]):
+        return True
+    # Allow same-origin / bare media links without blocked hosts (validated above)
+    return "." in path and not path.endswith(("/", ".html", ".htm", ".php", ".asp"))
+
+
+@bp.get("/filmtv/state")
+@login_required
+def filmtv_state():
+    # Drop legacy youtube sessions — native-only enforcement
+    if g.room.filmtv_source_type == "youtube":
+        g.room.filmtv_source_type = None
+        g.room.filmtv_source = None
+        g.room.filmtv_title = None
+        g.room.filmtv_playing = False
+        g.room.filmtv_position = 0.0
+        g.room.filmtv_updated_at = utcnow()
+        db.session.commit()
+    return jsonify({"ok": True, "state": g.room.filmtv_state()})
+
+
+@bp.post("/filmtv/load")
+@login_required
+def filmtv_load():
+    """Load a shared direct video URL for the HTML5 player (no YouTube / paid APIs)."""
+    data = request.get_json(silent=True) or {}
+    url = (data.get("url") or "").strip()[:2048]
+    title = (data.get("title") or "").strip()[:256] or "Watch Party"
+
+    if not url:
+        return jsonify({"error": "url required"}), 400
+    if not (url.startswith("http://") or url.startswith("https://")):
+        return jsonify({"error": "URL must start with http:// or https://"}), 400
+    if _is_blocked_media_host(url):
+        return jsonify({
+            "error": "Only native direct video links are allowed (no YouTube or streaming sites). Upload an MP4/WebM instead."
+        }), 400
+    if not _looks_like_direct_video(url):
+        return jsonify({
+            "error": "Use a direct video file URL (e.g. ending in .mp4 / .webm) or upload a file."
+        }), 400
+
+    g.room.filmtv_source_type = "url"
+    g.room.filmtv_source = url
+    g.room.filmtv_title = title
+    g.room.filmtv_playing = False
+    g.room.filmtv_position = 0.0
+    g.room.filmtv_updated_at = utcnow()
+    db.session.commit()
+
+    state = g.room.filmtv_state()
+    socketio.emit(
+        "filmtv_state",
+        {"state": state, "by": g.member.display_name, "action": "load"},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "state": state})
+
+
+@bp.post("/filmtv/upload")
+@login_required
+def filmtv_upload():
+    """Upload a local movie/video for shared playback."""
+    if "file" not in request.files:
+        return jsonify({"error": "file required"}), 400
+    f = request.files["file"]
+    original = secure_filename(f.filename or "movie.mp4")
+    ext = Path(original).suffix.lower()
+    if ext not in current_app.config["ALLOWED_VIDEO_EXT"]:
+        return jsonify({"error": f"video type not allowed ({ext})"}), 400
+
+    # Replace previous upload for this room
+    if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
+        try:
+            Path(g.room.filmtv_source).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    filename = f"filmtv_{g.room.room_id}_{uuid.uuid4().hex}{ext}"
+    dest = Path(current_app.config["FILMTV_DIR"]) / filename
+    f.save(dest)
+
+    g.room.filmtv_source_type = "upload"
+    g.room.filmtv_source = str(dest)
+    g.room.filmtv_title = (request.form.get("title") or original)[:256]
+    g.room.filmtv_playing = False
+    g.room.filmtv_position = 0.0
+    g.room.filmtv_updated_at = utcnow()
+    db.session.commit()
+
+    state = g.room.filmtv_state()
+    socketio.emit(
+        "filmtv_state",
+        {"state": state, "by": g.member.display_name, "action": "load"},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "state": state})
+
+
+@bp.get("/filmtv/stream")
+@login_required
+def filmtv_stream():
+    if g.room.filmtv_source_type != "upload" or not g.room.filmtv_source:
+        return jsonify({"error": "no uploaded video"}), 404
+    if not os.path.isfile(g.room.filmtv_source):
+        return jsonify({"error": "file missing"}), 404
+    return send_file(g.room.filmtv_source, conditional=True)
+
+
+@bp.post("/filmtv/clear")
+@login_required
+def filmtv_clear():
+    if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
+        try:
+            Path(g.room.filmtv_source).unlink(missing_ok=True)
+        except OSError:
+            pass
+    g.room.filmtv_source_type = None
+    g.room.filmtv_source = None
+    g.room.filmtv_title = None
+    g.room.filmtv_playing = False
+    g.room.filmtv_position = 0.0
+    g.room.filmtv_updated_at = utcnow()
+    db.session.commit()
+    state = g.room.filmtv_state()
+    socketio.emit(
+        "filmtv_state",
+        {"state": state, "by": g.member.display_name, "action": "clear"},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "state": state})
+
+
+# Explicitly refuse export — privacy hard-block
+@bp.route("/export", methods=["GET", "POST"])
+@bp.route("/messages/export", methods=["GET", "POST"])
+@bp.route("/history/export", methods=["GET", "POST"])
+@login_required
+def export_blocked():
+    return jsonify({"error": "Chat history export is permanently disabled for privacy."}), 403
+```
+
+---
+
+## File: `app/blueprints/auth.py`
+
+- **Path:** `app/blueprints/auth.py`
+- **Name:** `auth.py`
+
+```python
+"""Room create / join — exactly 2 members per Shared Room ID + Secret Password."""
+
+from __future__ import annotations
+
+from flask import Blueprint, current_app, jsonify, request, session
+
+from app.auth_helpers import get_member_from_request, login_required, room_member_count
+from app.crypto_utils import generate_member_token
+from app.extensions import db
+from app.models import Member, Room, utcnow
+
+bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+@bp.post("/create-room")
+def create_room():
+    data = request.get_json(silent=True) or {}
+    room_id = (data.get("room_id") or "").strip()
+    password = data.get("password") or ""
+    display_name = (data.get("display_name") or "Partner 1").strip()[:64]
+
+    if not room_id or len(room_id) < 4:
+        return jsonify({"error": "Room ID must be at least 4 characters"}), 400
+    if not password or len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+
+    existing_room = Room.query.filter_by(room_id=room_id).first()
+    if existing_room:
+        return jsonify({"error": "Room ID already exists. Try joining or use a different ID."}), 409
+
+    room = Room(room_id=room_id)
+    room.set_password(password)
+    db.session.add(room)
+    db.session.flush()
+
+    token = generate_member_token()
+    member = Member(
+        room_pk=room.id,
+        display_name=display_name,
+        session_token=token,
+        is_online=True,
+        last_seen=utcnow(),
+    )
+    db.session.add(member)
+    db.session.commit()
+
+    session["member_token"] = token
+    return jsonify(
+        {
+            "ok": True,
+            "room_id": room.room_id,
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "session_token": token,
+            "slots_left": current_app.config["MAX_ROOM_MEMBERS"] - 1,
+        }
+    )
+
+
+@bp.post("/join-room")
+def join_room():
+    data = request.get_json(silent=True) or {}
+    room_id = (data.get("room_id") or "").strip()
+    password = data.get("password") or ""
+    display_name = (data.get("display_name") or "Partner 2").strip()[:64]
+
+    room = Room.query.filter_by(room_id=room_id).first()
+    if not room or not room.check_password(password):
+        return jsonify({"error": "Invalid Room ID or password"}), 403
+
+    count = room_member_count(room)
+    max_members = current_app.config["MAX_ROOM_MEMBERS"]
+
+    existing = Member.query.filter_by(room_pk=room.id, display_name=display_name).first()
+    if existing:
+        existing.session_token = generate_member_token()
+        existing.is_online = True
+        existing.last_seen = utcnow()
+        db.session.commit()
+        session["member_token"] = existing.session_token
+        return jsonify(
+            {
+                "ok": True,
+                "room_id": room.room_id,
+                "member_id": existing.id,
+                "display_name": existing.display_name,
+                "session_token": existing.session_token,
+                "slots_left": max(0, max_members - count),
+                "rejoined": True,
+            }
+        )
+
+    if count >= max_members:
+        return jsonify({"error": "Room is full (2-person private room only)"}), 403
+
+    token = generate_member_token()
+    member = Member(
+        room_pk=room.id,
+        display_name=display_name,
+        session_token=token,
+        is_online=True,
+        last_seen=utcnow(),
+    )
+    db.session.add(member)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Could not join — try a different display name"}), 409
+    
+    session["member_token"] = token
+    return jsonify(
+        {
+            "ok": True,
+            "room_id": room.room_id,
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "session_token": token,
+            "slots_left": max_members - count - 1,
+        }
+    )
+
+
+@bp.get("/me")
+@login_required
+def me():
+    from flask import g
+    room = g.room
+    members = [
+        {
+            "id": m.id,
+            "display_name": m.display_name,
+            "is_online": m.is_online,
+        }
+        for m in room.members
+    ]
+    return jsonify(
+        {
+            "member_id": g.member.id,
+            "display_name": g.member.display_name,
+            "room_id": room.room_id,
+            "theme_preset": room.theme_preset,
+            "theme_path": room.theme_path,
+            "members": members,
+            "instagram_sync_url": room.instagram_sync_url,
+            "filmtv": room.filmtv_state(),
+        }
+    )
+
+
+@bp.post("/display-name")
+@login_required
+def update_display_name():
+    from flask import g
+    data = request.get_json(silent=True) or {}
+    name = (data.get("display_name") or "").strip()[:64]
+    if not name:
+        return jsonify({"error": "Display name required"}), 400
+
+    clash = Member.query.filter(
+        Member.room_pk == g.room.id,
+        Member.display_name == name,
+        Member.id != g.member.id,
+    ).first()
+    if clash:
+        return jsonify({"error": "Name already taken in this room"}), 409
+
+    g.member.display_name = name
+    db.session.commit()
+    return jsonify({"ok": True, "display_name": name})
+
+
+@bp.post("/logout")
+@login_required
+def logout():
+    from flask import g
+    g.member.is_online = False
+    db.session.commit()
+    session.pop("member_token", None)
+    return jsonify({"ok": True})
+
+
+@bp.get("/session-check")
+def session_check():
+    member = get_member_from_request()
+    if not member:
+        return jsonify({"authenticated": False}), 401
+    return jsonify(
+        {
+            "authenticated": True,
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "room_id": member.room.room_id,
+            "session_token": member.session_token,
+        }
+    )
+```
+
+---
+
+## File: `app/config.py`
+
+- **Path:** `app/config.py`
+- **Name:** `config.py`
+
+```python
+import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+INSTANCE_DIR = BASE_DIR / "instance"
+MEDIA_DIR = BASE_DIR / "media_storage"
+THEMES_DIR = MEDIA_DIR / "themes"
+UPLOADS_DIR = MEDIA_DIR / "uploads"
+DOODLES_DIR = MEDIA_DIR / "doodles"
+FILMTV_DIR = MEDIA_DIR / "filmtv"
+
+for d in (INSTANCE_DIR, MEDIA_DIR, THEMES_DIR, UPLOADS_DIR, DOODLES_DIR, FILMTV_DIR):
+    d.mkdir(parents=True, exist_ok=True)
+
+
+class Config:
+    SECRET_KEY = os.environ.get("SECRET_KEY", os.urandom(32).hex())
+    SQLALCHEMY_DATABASE_URI = os.environ.get(
+        "DATABASE_URL", f"sqlite:///{INSTANCE_DIR / 'ipsita_sathi.db'}"
+    )
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    MAX_CONTENT_LENGTH = 512 * 1024 * 1024  # 512 MB (FilmTV uploads)
+    MEDIA_DIR = str(MEDIA_DIR)
+    THEMES_DIR = str(THEMES_DIR)
+    UPLOADS_DIR = str(UPLOADS_DIR)
+    DOODLES_DIR = str(DOODLES_DIR)
+    FILMTV_DIR = str(FILMTV_DIR)
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    # Room capacity hard-limit
+    MAX_ROOM_MEMBERS = 2
+    ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+    ALLOWED_AUDIO_EXT = {".webm", ".ogg", ".mp3", ".wav", ".m4a"}
+    ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".ogg", ".mov", ".mkv", ".m4v"}
+```
+
+---
+
+## File: `app/crypto_utils.py`
+
+- **Path:** `app/crypto_utils.py`
+- **Name:** `crypto_utils.py`
+
+```python
+"""Symmetric encryption helpers for message/media payloads.
+
+True E2E: the room password never leaves the client for message keys.
+Server stores ciphertext only. Room credentials are hashed (Werkzeug).
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import os
+
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+def derive_room_key(room_id: str, password: str, salt: bytes | None = None) -> tuple[bytes, bytes]:
+    """Derive a Fernet-compatible key from room_id + password."""
+    if salt is None:
+        salt = hashlib.sha256(f"ipsita-sathi:{room_id}".encode()).digest()[:16]
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=salt,
+        iterations=390_000,
+    )
+    raw = kdf.derive(f"{room_id}:{password}".encode("utf-8"))
+    key = base64.urlsafe_b64encode(raw)
+    return key, salt
+
+
+def encrypt_text(plaintext: str, key: bytes) -> str:
+    token = Fernet(key).encrypt(plaintext.encode("utf-8"))
+    return token.decode("utf-8")
+
+
+def decrypt_text(ciphertext: str, key: bytes) -> str | None:
+    try:
+        return Fernet(key).decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    except (InvalidToken, Exception):
+        return None
+
+
+def encrypt_bytes(data: bytes, key: bytes) -> bytes:
+    return Fernet(key).encrypt(data)
+
+
+def decrypt_bytes(data: bytes, key: bytes) -> bytes | None:
+    try:
+        return Fernet(key).decrypt(data)
+    except (InvalidToken, Exception):
+        return None
+
+
+def generate_member_token() -> str:
+    return base64.urlsafe_b64encode(os.urandom(32)).decode("utf-8").rstrip("=")
+```
+
+---
+
+## File: `app/extensions.py`
+
+- **Path:** `app/extensions.py`
+- **Name:** `extensions.py`
+
+```python
+from flask_sqlalchemy import SQLAlchemy
+from flask_socketio import SocketIO
+
+db = SQLAlchemy()
+socketio = SocketIO(cors_allowed_origins="*", async_mode="threading")
+```
+
+---
+
+## File: `app/models.py`
+
+- **Path:** `app/models.py`
+- **Name:** `models.py`
+
+```python
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from app.extensions import db
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class Room(db.Model):
+    __tablename__ = "rooms"
+
+    id = db.Column(db.Integer, primary_key=True)
+    room_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(256), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    theme_path = db.Column(db.String(512), nullable=True)
+    theme_preset = db.Column(db.String(64), default="blush", nullable=False)
+    instagram_session_enc = db.Column(db.Text, nullable=True)
+    instagram_sync_url = db.Column(db.String(1024), nullable=True)
+    doodle_path = db.Column(db.String(512), nullable=True)
+    # FilmTV watch party state
+    filmtv_source_type = db.Column(db.String(32), nullable=True)  # url|upload (native only)
+    filmtv_source = db.Column(db.String(2048), nullable=True)
+    filmtv_title = db.Column(db.String(256), nullable=True)
+    filmtv_playing = db.Column(db.Boolean, default=False, nullable=False)
+    filmtv_position = db.Column(db.Float, default=0.0, nullable=False)
+    filmtv_updated_at = db.Column(db.DateTime, nullable=True)
+
+    members = db.relationship("Member", back_populates="room", cascade="all, delete-orphan")
+    messages = db.relationship("Message", back_populates="room", cascade="all, delete-orphan")
+
+    def set_password(self, password: str) -> None:
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        return check_password_hash(self.password_hash, password)
+
+    def filmtv_state(self) -> dict:
+        """Playback snapshot with lag-compensated position estimate."""
+        pos = float(self.filmtv_position or 0.0)
+        if self.filmtv_playing and self.filmtv_updated_at:
+            ref = self.filmtv_updated_at
+            if ref.tzinfo is None:
+                ref = ref.replace(tzinfo=timezone.utc)
+            elapsed = (utcnow() - ref).total_seconds()
+            if elapsed > 0:
+                pos += elapsed
+        return {
+            "source_type": self.filmtv_source_type,
+            "source": self.filmtv_source,
+            "stream_url": "/api/filmtv/stream" if self.filmtv_source_type == "upload" else self.filmtv_source,
+            "title": self.filmtv_title,
+            "playing": bool(self.filmtv_playing),
+            "position": round(pos, 3),
+            "updated_at": self.filmtv_updated_at.isoformat() if self.filmtv_updated_at else None,
+            "server_time": utcnow().isoformat(),
+        }
+
+
+class Member(db.Model):
+    __tablename__ = "members"
+
+    id = db.Column(db.Integer, primary_key=True)
+    room_pk = db.Column(db.Integer, db.ForeignKey("rooms.id"), nullable=False)
+    display_name = db.Column(db.String(64), nullable=False, default="Partner")
+    session_token = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    joined_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    last_seen = db.Column(db.DateTime, default=utcnow, nullable=False)
+    is_online = db.Column(db.Boolean, default=False, nullable=False)
+
+    room = db.relationship("Room", back_populates="members")
+
+    __table_args__ = (
+        db.UniqueConstraint("room_pk", "display_name", name="uq_room_display_name"),
+    )
+
+
+class Message(db.Model):
+    __tablename__ = "messages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    room_pk = db.Column(db.Integer, db.ForeignKey("rooms.id"), nullable=False, index=True)
+    sender_id = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=False)
+    # ciphertext only — never store plaintext
+    ciphertext = db.Column(db.Text, nullable=False)
+    msg_type = db.Column(db.String(32), nullable=False, default="text")  # text|image|voice|system
+    media_path = db.Column(db.String(512), nullable=True)  # encrypted file path if any
+    media_mime = db.Column(db.String(128), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
+    expires_at = db.Column(db.DateTime, nullable=True, index=True)
+    deleted = db.Column(db.Boolean, default=False, nullable=False)
+
+    room = db.relationship("Room", back_populates="messages")
+    sender = db.relationship("Member")
+
+    def is_expired(self) -> bool:
+        if self.expires_at is None:
+            return False
+        exp = self.expires_at
+        if exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        return utcnow() >= exp
+```
+
+---
+
+## File: `app/sockets.py`
+
+- **Path:** `app/sockets.py`
+- **Name:** `sockets.py`
+
+```python
+"""Realtime events: chat presence, doodle strokes, Instagram sync."""
+
+from __future__ import annotations
+
+from flask import request, session
+from flask_socketio import emit, join_room, leave_room
+
+from app.extensions import db, socketio
+from app.models import Member, utcnow
+
+
+def _member_from_sid_auth(auth: dict | None) -> Member | None:
+    if not auth:
+        return None
+    token = auth.get("token")
+    if not token:
+        return None
+    return Member.query.filter_by(session_token=token).first()
+
+
+@socketio.on("connect")
+def on_connect(auth=None):
+    member = _member_from_sid_auth(auth)
+    if not member:
+        return False  # reject
+    member.is_online = True
+    member.last_seen = utcnow()
+    db.session.commit()
+    room_name = f"room:{member.room.room_id}"
+    join_room(room_name)
+    emit(
+        "presence",
+        {
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "online": True,
+        },
+        room=room_name,
+        include_self=False,
+    )
+    emit("connected", {"member_id": member.id, "room_id": member.room.room_id})
+
+
+@socketio.on("disconnect")
+def on_disconnect():
+    try:
+        token = session.get("member_token")
+        if token:
+            member = Member.query.filter_by(session_token=token).first()
+            if member:
+                member.is_online = False
+                member.last_seen = utcnow()
+                db.session.commit()
+                room_name = f"room:{member.room.room_id}"
+                emit(
+                    "presence",
+                    {
+                        "member_id": member.id,
+                        "display_name": member.display_name,
+                        "online": False,
+                    },
+                    room=room_name,
+                    include_self=False,
+                )
+    except Exception:
+        db.session.rollback()
+
+
+@socketio.on("leave_room")
+def on_leave(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    member.is_online = False
+    member.last_seen = utcnow()
+    db.session.commit()
+    room_name = f"room:{member.room.room_id}"
+    emit(
+        "presence",
+        {
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "online": False,
+        },
+        room=room_name,
+        include_self=False,
+    )
+    leave_room(room_name)
+
+
+@socketio.on("typing")
+def on_typing(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    emit(
+        "typing",
+        {"member_id": member.id, "display_name": member.display_name, "typing": bool((data or {}).get("typing"))},
+        room=f"room:{member.room.room_id}",
+        include_self=False,
+    )
+
+
+@socketio.on("doodle_stroke")
+def on_doodle_stroke(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    payload = {
+        "points": (data or {}).get("points"),
+        "color": (data or {}).get("color", "#e91e63"),
+        "width": (data or {}).get("width", 3),
+        "tool": (data or {}).get("tool", "pen"),
+        "member_id": member.id,
+    }
+    emit("doodle_stroke", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("doodle_clear")
+def on_doodle_clear(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    emit("doodle_clear", {"by": member.display_name}, room=f"room:{member.room.room_id}")
+
+
+@socketio.on("instagram_nav")
+def on_instagram_nav(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    url = (data or {}).get("url", "")
+    member.room.instagram_sync_url = url[:1024] if url else None
+    db.session.commit()
+    emit(
+        "instagram_sync",
+        {"url": url, "by": member.display_name},
+        room=f"room:{member.room.room_id}",
+        include_self=False,
+    )
+
+
+def _filmtv_member(data) -> Member | None:
+    token = (data or {}).get("token")
+    if not token:
+        return None
+    return Member.query.filter_by(session_token=token).first()
+
+
+@socketio.on("filmtv_control")
+def on_filmtv_control(data):
+    member = _filmtv_member(data)
+    if not member:
+        return
+    room = member.room
+    action = (data or {}).get("action")
+    position = (data or {}).get("position")
+
+    try:
+        if position is not None:
+            room.filmtv_position = max(0.0, float(position))
+    except (TypeError, ValueError):
+        pass
+
+    if action == "play":
+        room.filmtv_playing = True
+    elif action == "pause":
+        room.filmtv_playing = False
+    elif action == "seek":
+        pass
+    elif action == "heartbeat":
+        pass
+    else:
+        return
+
+    room.filmtv_updated_at = utcnow()
+    db.session.commit()
+
+    payload = {
+        "action": action,
+        "state": room.filmtv_state(),
+        "by": member.display_name,
+        "member_id": member.id,
+    }
+    emit("filmtv_control", payload, room=f"room:{room.room_id}", include_self=False)
+
+
+@socketio.on("filmtv_request_sync")
+def on_filmtv_request_sync(data):
+    member = _filmtv_member(data)
+    if not member:
+        return
+    emit("filmtv_state", {"state": member.room.filmtv_state(), "action": "sync", "by": "server"})
+```
+
+---
+
+## File: `apply_fixes.py`
+
+- **Path:** `apply_fixes.py`
+- **Name:** `apply_fixes.py`
+
+```python
+import os
+
+# 1. Fixed auth.py code (Handles 409 conflict & duplicate name smoothly)
+AUTH_CODE = '''"""Room create / join — exactly 2 members per Shared Room ID + Secret Password."""
+
+from __future__ import annotations
+
+from flask import Blueprint, current_app, jsonify, request, session
+
+from app.auth_helpers import get_member_from_request, login_required, room_member_count
+from app.crypto_utils import generate_member_token
+from app.extensions import db
+from app.models import Member, Room, utcnow
+
+bp = Blueprint("auth", __name__, url_prefix="/api/auth")
+
+
+@bp.post("/create-room")
+def create_room():
+    data = request.get_json(silent=True) or {}
+    room_id = (data.get("room_id") or "").strip()
+    password = data.get("password") or ""
+    display_name = (data.get("display_name") or "Partner 1").strip()[:64]
+
+    if not room_id or len(room_id) < 4:
+        return jsonify({"error": "Room ID must be at least 4 characters"}), 400
+    if not password or len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+
+    existing_room = Room.query.filter_by(room_id=room_id).first()
+    if existing_room:
+        return jsonify({"error": "Room ID already exists. Try joining or use a different ID."}), 409
+
+    room = Room(room_id=room_id)
+    room.set_password(password)
+    db.session.add(room)
+    db.session.flush()
+
+    token = generate_member_token()
+    member = Member(
+        room_pk=room.id,
+        display_name=display_name,
+        session_token=token,
+        is_online=True,
+        last_seen=utcnow(),
+    )
+    db.session.add(member)
+    db.session.commit()
+
+    session["member_token"] = token
+    return jsonify(
+        {
+            "ok": True,
+            "room_id": room.room_id,
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "session_token": token,
+            "slots_left": current_app.config["MAX_ROOM_MEMBERS"] - 1,
+        }
+    )
+
+
+@bp.post("/join-room")
+def join_room():
+    data = request.get_json(silent=True) or {}
+    room_id = (data.get("room_id") or "").strip()
+    password = data.get("password") or ""
+    display_name = (data.get("display_name") or "Partner 2").strip()[:64]
+
+    room = Room.query.filter_by(room_id=room_id).first()
+    if not room or not room.check_password(password):
+        return jsonify({"error": "Invalid Room ID or password"}), 403
+
+    count = room_member_count(room)
+    max_members = current_app.config["MAX_ROOM_MEMBERS"]
+
+    existing = Member.query.filter_by(room_pk=room.id, display_name=display_name).first()
+    if existing:
+        existing.session_token = generate_member_token()
+        existing.is_online = True
+        existing.last_seen = utcnow()
+        db.session.commit()
+        session["member_token"] = existing.session_token
+        return jsonify(
+            {
+                "ok": True,
+                "room_id": room.room_id,
+                "member_id": existing.id,
+                "display_name": existing.display_name,
+                "session_token": existing.session_token,
+                "slots_left": max(0, max_members - count),
+                "rejoined": True,
+            }
+        )
+
+    if count >= max_members:
+        return jsonify({"error": "Room is full (2-person private room only)"}), 403
+
+    token = generate_member_token()
+    member = Member(
+        room_pk=room.id,
+        display_name=display_name,
+        session_token=token,
+        is_online=True,
+        last_seen=utcnow(),
+    )
+    db.session.add(member)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return jsonify({"error": "Could not join — try a different display name"}), 409
+    
+    session["member_token"] = token
+    return jsonify(
+        {
+            "ok": True,
+            "room_id": room.room_id,
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "session_token": token,
+            "slots_left": max_members - count - 1,
+        }
+    )
+
+
+@bp.get("/me")
+@login_required
+def me():
+    from flask import g
+    room = g.room
+    members = [
+        {
+            "id": m.id,
+            "display_name": m.display_name,
+            "is_online": m.is_online,
+        }
+        for m in room.members
+    ]
+    return jsonify(
+        {
+            "member_id": g.member.id,
+            "display_name": g.member.display_name,
+            "room_id": room.room_id,
+            "theme_preset": room.theme_preset,
+            "theme_path": room.theme_path,
+            "members": members,
+            "instagram_sync_url": room.instagram_sync_url,
+            "filmtv": room.filmtv_state(),
+        }
+    )
+
+
+@bp.post("/display-name")
+@login_required
+def update_display_name():
+    from flask import g
+    data = request.get_json(silent=True) or {}
+    name = (data.get("display_name") or "").strip()[:64]
+    if not name:
+        return jsonify({"error": "Display name required"}), 400
+
+    clash = Member.query.filter(
+        Member.room_pk == g.room.id,
+        Member.display_name == name,
+        Member.id != g.member.id,
+    ).first()
+    if clash:
+        return jsonify({"error": "Name already taken in this room"}), 409
+
+    g.member.display_name = name
+    db.session.commit()
+    return jsonify({"ok": True, "display_name": name})
+
+
+@bp.post("/logout")
+@login_required
+def logout():
+    from flask import g
+    g.member.is_online = False
+    db.session.commit()
+    session.pop("member_token", None)
+    return jsonify({"ok": True})
+
+
+@bp.get("/session-check")
+def session_check():
+    member = get_member_from_request()
+    if not member:
+        return jsonify({"authenticated": False}), 401
+    return jsonify(
+        {
+            "authenticated": True,
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "room_id": member.room.room_id,
+            "session_token": member.session_token,
+        }
+    )
+'''
+
+# 2. Fixed sockets.py code (Handles disconnect presence sync)
+SOCKETS_CODE = '''"""Realtime events: chat presence, doodle strokes, Instagram sync."""
+
+from __future__ import annotations
+
+from flask import request, session
+from flask_socketio import emit, join_room, leave_room
+
+from app.extensions import db, socketio
+from app.models import Member, utcnow
+
+
+def _member_from_sid_auth(auth: dict | None) -> Member | None:
+    if not auth:
+        return None
+    token = auth.get("token")
+    if not token:
+        return None
+    return Member.query.filter_by(session_token=token).first()
+
+
+@socketio.on("connect")
+def on_connect(auth=None):
+    member = _member_from_sid_auth(auth)
+    if not member:
+        return False  # reject
+    member.is_online = True
+    member.last_seen = utcnow()
+    db.session.commit()
+    room_name = f"room:{member.room.room_id}"
+    join_room(room_name)
+    emit(
+        "presence",
+        {
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "online": True,
+        },
+        room=room_name,
+        include_self=False,
+    )
+    emit("connected", {"member_id": member.id, "room_id": member.room.room_id})
+
+
+@socketio.on("disconnect")
+def on_disconnect():
+    try:
+        token = session.get("member_token")
+        if token:
+            member = Member.query.filter_by(session_token=token).first()
+            if member:
+                member.is_online = False
+                member.last_seen = utcnow()
+                db.session.commit()
+                room_name = f"room:{member.room.room_id}"
+                emit(
+                    "presence",
+                    {
+                        "member_id": member.id,
+                        "display_name": member.display_name,
+                        "online": False,
+                    },
+                    room=room_name,
+                    include_self=False,
+                )
+    except Exception:
+        db.session.rollback()
+
+
+@socketio.on("leave_room")
+def on_leave(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    member.is_online = False
+    member.last_seen = utcnow()
+    db.session.commit()
+    room_name = f"room:{member.room.room_id}"
+    emit(
+        "presence",
+        {
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "online": False,
+        },
+        room=room_name,
+        include_self=False,
+    )
+    leave_room(room_name)
+
+
+@socketio.on("typing")
+def on_typing(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    emit(
+        "typing",
+        {"member_id": member.id, "display_name": member.display_name, "typing": bool((data or {}).get("typing"))},
+        room=f"room:{member.room.room_id}",
+        include_self=False,
+    )
+
+
+@socketio.on("doodle_stroke")
+def on_doodle_stroke(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    payload = {
+        "points": (data or {}).get("points"),
+        "color": (data or {}).get("color", "#e91e63"),
+        "width": (data or {}).get("width", 3),
+        "tool": (data or {}).get("tool", "pen"),
+        "member_id": member.id,
+    }
+    emit("doodle_stroke", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("doodle_clear")
+def on_doodle_clear(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    emit("doodle_clear", {"by": member.display_name}, room=f"room:{member.room.room_id}")
+
+
+@socketio.on("instagram_nav")
+def on_instagram_nav(data):
+    token = (data or {}).get("token")
+    member = Member.query.filter_by(session_token=token).first() if token else None
+    if not member:
+        return
+    url = (data or {}).get("url", "")
+    member.room.instagram_sync_url = url[:1024] if url else None
+    db.session.commit()
+    emit(
+        "instagram_sync",
+        {"url": url, "by": member.display_name},
+        room=f"room:{member.room.room_id}",
+        include_self=False,
+    )
+
+
+def _filmtv_member(data) -> Member | None:
+    token = (data or {}).get("token")
+    if not token:
+        return None
+    return Member.query.filter_by(session_token=token).first()
+
+
+@socketio.on("filmtv_control")
+def on_filmtv_control(data):
+    member = _filmtv_member(data)
+    if not member:
+        return
+    room = member.room
+    action = (data or {}).get("action")
+    position = (data or {}).get("position")
+
+    try:
+        if position is not None:
+            room.filmtv_position = max(0.0, float(position))
+    except (TypeError, ValueError):
+        pass
+
+    if action == "play":
+        room.filmtv_playing = True
+    elif action == "pause":
+        room.filmtv_playing = False
+    elif action == "seek":
+        pass
+    elif action == "heartbeat":
+        pass
+    else:
+        return
+
+    room.filmtv_updated_at = utcnow()
+    db.session.commit()
+
+    payload = {
+        "action": action,
+        "state": room.filmtv_state(),
+        "by": member.display_name,
+        "member_id": member.id,
+    }
+    emit("filmtv_control", payload, room=f"room:{room.room_id}", include_self=False)
+
+
+@socketio.on("filmtv_request_sync")
+def on_filmtv_request_sync(data):
+    member = _filmtv_member(data)
+    if not member:
+        return
+    emit("filmtv_state", {"state": member.room.filmtv_state(), "action": "sync", "by": "server"})
+'''
+
+def apply_updates():
+    auth_path = os.path.join("app", "blueprints", "auth.py")
+    sockets_path = os.path.join("app", "sockets.py")
+
+    os.makedirs(os.path.dirname(auth_path), exist_ok=True)
+    
+    with open(auth_path, "w", encoding="utf-8") as f:
+        f.write(AUTH_CODE)
+    print(" [✓] Updated: app/blueprints/auth.py successfully.")
+
+    with open(sockets_path, "w", encoding="utf-8") as f:
+        f.write(SOCKETS_CODE)
+    print(" [✓] Updated: app/sockets.py successfully.")
+
+    print("\n🎉 All fixes applied automatically! Now run your app using: python run.py")
+
+if __name__ == "__main__":
+    apply_updates()
+```
+
+---
+
+## File: `capacitor.config.json`
+
+- **Path:** `capacitor.config.json`
+- **Name:** `capacitor.config.json`
+
+```json
+{
+  "appId": "com.ipsitasathi.app",
+  "appName": "Ipsita-Sathi",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true,
+    "url": "http://10.0.2.2:5000"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500
+    }
+  }
+}
+```
+
+---
+
+## File: `debugger_pro.py`
+
+- **Path:** `debugger_pro.py`
+- **Name:** `debugger_pro.py`
+
+```python
+import os
+import sqlite3
+from pathlib import Path
+
+def run_deep_diagnostics():
+    print("=" * 60)
+    print("      IPSITA-SATHI: DEEP CODE & DATABASE DIAGNOSTIC")
+    print("=" * 60)
+
+    issues = []
+
+    # 1. Check folder structure
+    required_dirs = ["app", "app/blueprints", "static", "static/js", "static/css", "templates"]
+    for d in required_dirs:
+        if not os.path.exists(d):
+            issues.append(f"Missing Directory: '{d}' folder nahi mila!")
+        else:
+            print(f" [✓] Directory found: {d}")
+
+    # 2. Check essential files
+    required_files = [
+        "app/__init__.py", 
+        "app/models.py", 
+        "app/blueprints/auth.py", 
+        "app/blueprints/api.py", 
+        "app/sockets.py", 
+        "static/js/app.js",
+        "templates/index.html",
+        "run.py"
+    ]
+    for f in required_files:
+        if not os.path.exists(f):
+            issues.append(f"Critical Missing File: '{f}' gayab hai!")
+        else:
+            print(f" [✓] File verified: {f}")
+
+    # 3. Check Database & Tables (SQLite)
+    db_path = Path("instance/ipsita_sathi.db")
+    if not db_path.exists():
+        print(" [!] Database file abhi nahi bani hai (App run karne par ban jayegi).")
+    else:
+        print(f" [✓] Database found at: {db_path}")
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = [row[0] for row in cursor.fetchall()]
+            print(f" -> Tables in DB: {tables}")
+            
+            if "rooms" not in tables or "members" not in tables or "messages" not in tables:
+                issues.append("Database Error: Kuch zaroori tables (rooms/members/messages) missing hain!")
+            conn.close()
+        except Exception as e:
+            issues.append(f"Database Read Error: {e}")
+
+    # Final Report
+    print("\n" + "=" * 60)
+    print("                  DIAGNOSTIC REPORT")
+    print("=" * 60)
+    if issues:
+        print(f"❌ Found {len(issues)} potential issues / blockers:\n")
+        for idx, err in enumerate(issues, 1):
+            print(f"  {idx}. {err}")
+    else:
+        print("🎉 Code structure aur database ke lihaz se sab kuch ekdum fit hai!")
+    print("=" * 60)
+
+if __name__ == "__main__":
+    run_deep_diagnostics()
+```
+
+---
+
+## File: `package.json`
+
+- **Path:** `package.json`
+- **Name:** `package.json`
+
+```json
+{
+  "name": "ipsita-sathi",
+  "version": "1.0.0",
+  "description": "Secure 2-person private room — Capacitor mobile wrapper",
+  "scripts": {
+    "cap:init": "npx cap add android && npx cap add ios",
+    "cap:sync": "npx cap sync",
+    "cap:android": "npx cap open android",
+    "cap:ios": "npx cap open ios",
+    "build:www": "node scripts/prepare-www.js"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0",
+    "@capacitor/ios": "^6.1.0",
+    "@capacitor/splash-screen": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.0"
+  }
+}
+```
+
+---
+
+## File: `README.md`
+
+- **Path:** `README.md`
+- **Name:** `README.md`
+
+```markdown
+# Ipsita-Sathi
+
+Secure **2-person private room** — Shared Room ID + Secret Password. No public rooms, no AI chatbot.
+
+## Features
+
+1. **Private room auth** — Flask/SQLAlchemy; max 2 members; password hashed server-side  
+2. **Display names & themes** — presets + custom background upload  
+3. **Rich messaging** — text, voice notes, photos; files under `media_storage/`  
+4. **Privacy** — no export APIs; screenshot / capture discouragement on the client  
+5. **Instagram sync** — co-watch Reel/post URLs in realtime; optional encrypted session note  
+6. **Disappearing messages** — TTL deletes from UI + DB  
+7. **Secret doodle board** — shared canvas with local PNG save  
+8. **E2E encryption** — AES-GCM on the client (room ID + password); offline outbox sync  
+9. **Capacitor** — Android/iOS packaging via `package.json` scripts  
+
+## Quick start
+
+```bash
+cd Ipsita-Sathi-main
+python -m venv .venv
+
+# Windows
+.venv\Scripts\activate
+pip install -r requirements.txt
+python run.py
+```
+
+Open http://127.0.0.1:5000
+
+1. Partner A: **Create room** (Room ID + password + display name)  
+2. Partner B: **Join room** with the same credentials  
+
+## Mobile (Capacitor)
+
+```bash
+npm install
+npm run build:www
+npx cap add android   # once
+# Edit capacitor.config.json → server.url to your PC LAN IP, e.g. http://192.168.1.10:5000
+npx cap sync
+npx cap open android
+```
+
+## Security notes
+
+- Room passwords are never stored in plaintext (Werkzeug hashes).  
+- Message bodies are encrypted in the browser before upload; the DB stores ciphertext only.  
+- Chat history **export is permanently blocked** (`/api/export` → 403).  
+- Web screenshot blocking is best-effort (OS-level capture cannot be fully prevented in a browser).  
+
+## Project layout
+
+```
+app/                 Flask factory, models, crypto, sockets, blueprints
+static/              CSS + client JS (crypto, offline, doodle, privacy)
+templates/           SPA shell
+media_storage/       Local uploads, themes, doodles
+instance/            SQLite DB
+run.py               Server entry
+capacitor.config.json
+```
+```
+
+---
+
+## File: `requirements.txt`
+
+- **Path:** `requirements.txt`
+- **Name:** `requirements.txt`
+
+```text
+flask>=3.0.0
+flask-sqlalchemy>=3.1.0
+flask-socketio>=5.3.0
+flask-cors>=4.0.0
+cryptography>=42.0.0
+werkzeug>=3.0.0
+python-socketio>=5.11.0
+eventlet>=0.35.0
+gunicorn>=21.0.0
+Pillow>=10.0.0
+```
+
+---
+
+## File: `run.py`
+
+- **Path:** `run.py`
+- **Name:** `run.py`
+
+```python
+"""Ipsita-Sathi — secure 2-person private room server."""
+
+from app import create_app
+from app.extensions import socketio
+
+app = create_app()
+
+if __name__ == "__main__":
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True, allow_unsafe_werkzeug=True)
+```
+
+---
+
+## File: `scripts/prepare-www.js`
+
+- **Path:** `scripts/prepare-www.js`
+- **Name:** `prepare-www.js`
+
+```javascript
+/**
+ * Copies a minimal Capacitor web shell. Production mobile builds should
+ * point capacitor.config.json server.url at your Flask host (LAN/HTTPS).
+ */
+const fs = require("fs");
+const path = require("path");
+
+const root = path.join(__dirname, "..");
+const www = path.join(root, "www");
+fs.mkdirSync(www, { recursive: true });
+
+const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Ipsita-Sathi</title>
+  <style>
+    body { font-family: system-ui; background:#1a0f14; color:#fce8ef; display:flex; min-height:100vh; align-items:center; justify-content:center; text-align:center; padding:24px; }
+    a { color:#ff8fab; }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>Ipsita-Sathi</h1>
+    <p>Native shell ready. Configure <code>capacitor.config.json</code> <code>server.url</code> to your Flask server, then run <code>npx cap sync</code>.</p>
+    <p>Default Android emulator host: <a href="http://10.0.2.2:5000">http://10.0.2.2:5000</a></p>
+  </div>
+</body>
+</html>`;
+
+fs.writeFileSync(path.join(www, "index.html"), html);
+console.log("Prepared www/ for Capacitor");
+```
+
+---
+
+## File: `static/css/app.css`
+
+- **Path:** `static/css/app.css`
+- **Name:** `app.css`
+
+```css
+/*! Ipsita-Sathi — romantic private room + FilmTV */
+:root {
+  --bg-1: #140a10;
+  --bg-2: #2a121c;
+  --bg-3: #3d1828;
+  --ink: #fff0f5;
+  --muted: #d4a0b0;
+  --accent: #ff5c8a;
+  --accent-2: #ff9eb5;
+  --accent-warm: #ffb38a;
+  --glass: rgba(36, 14, 24, 0.78);
+  --glass-strong: rgba(22, 8, 14, 0.88);
+  --bubble-me: linear-gradient(135deg, #ff4d7a, #ff7a9a);
+  --bubble-them: rgba(255, 255, 255, 0.1);
+  --danger: #ff7b7b;
+  --ok: #7dcea0;
+  --radius: 20px;
+  --radius-sm: 12px;
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-body: "Nunito", system-ui, sans-serif;
+  --theme-image: none;
+  --glow: 0 0 40px rgba(255, 92, 138, 0.22);
+  --border-soft: rgba(255, 158, 181, 0.28);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background:
+    linear-gradient(165deg, rgba(20, 10, 16, 0.92), rgba(42, 18, 28, 0.9)),
+    var(--theme-image),
+    radial-gradient(ellipse at 15% 0%, rgba(255, 92, 138, 0.28) 0%, transparent 45%),
+    radial-gradient(ellipse at 90% 80%, rgba(255, 179, 138, 0.14) 0%, transparent 40%),
+    linear-gradient(165deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
+
+.ambient {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(255, 92, 138, 0.08), transparent 35%),
+    radial-gradient(circle at 80% 70%, rgba(255, 158, 181, 0.06), transparent 40%);
+  animation: ambientDrift 18s ease-in-out infinite alternate;
+}
+
+@keyframes ambientDrift {
+  from { opacity: 0.7; transform: scale(1); }
+  to { opacity: 1; transform: scale(1.05); }
+}
+
+body.privacy-blur #appMain { filter: blur(18px); user-select: none; }
+body.capture-guard::after {
+  content: "Privacy protected";
+  position: fixed; inset: 0;
+  background: #000;
+  color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem;
+  z-index: 99999;
+  pointer-events: none;
+}
+
+#appShell {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  transition: max-width 0.45s var(--ease);
+}
+
+body.filmtv-open #appShell,
+body.theater-mode #appShell {
+  max-width: min(1280px, 100%);
+}
+
+.brand {
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 6vw, 3.2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--accent-2);
+  text-align: center;
+  margin: 20px 0 6px;
+  text-shadow: 0 0 28px rgba(255, 92, 138, 0.35);
+  animation: brandIn 0.8s var(--ease) both;
+}
+
+.brand::after {
+  content: " ♡";
+  font-size: 0.55em;
+  opacity: 0.75;
+  vertical-align: middle;
+}
+
+@keyframes brandIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.tagline {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.98rem;
+  margin-bottom: 28px;
+  font-style: italic;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+}
+
+.panel {
+  background: var(--glass);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--glow), 0 24px 60px rgba(0, 0, 0, 0.4);
+  animation: panelIn 0.7s var(--ease) 0.1s both;
+}
+
+@keyframes panelIn {
+  from { opacity: 0; transform: translateY(16px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  border-radius: 999px;
+}
+.tabs button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.25s, color 0.25s;
+}
+.tabs button.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(255, 92, 138, 0.35);
+}
+
+label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 12px 0 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+input[type="text"],
+input[type="password"],
+input[type="url"],
+select {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--ink);
+  font-size: 1rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 92, 138, 0.18);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--accent), #ff7a9a);
+  color: #fff;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: transform 0.15s, box-shadow 0.2s, opacity 0.2s;
+  box-shadow: 0 8px 22px rgba(255, 92, 138, 0.28);
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn.ghost {
+  background: transparent;
+  border: 1px solid var(--border-soft);
+  color: var(--accent-2);
+  box-shadow: none;
+}
+.btn.ghost.active {
+  background: rgba(255, 92, 138, 0.2);
+  border-color: var(--accent);
+  color: #fff;
+}
+.btn.sm { padding: 7px 12px; font-size: 0.78rem; border-radius: 10px; }
+.btn.block { width: 100%; margin-top: 16px; }
+.btn.icon {
+  width: 44px; height: 44px; padding: 0; border-radius: 50%;
+  flex-shrink: 0;
+}
+.file-btn { cursor: pointer; }
+
+.err { color: var(--danger); font-size: 0.85rem; margin-top: 10px; min-height: 1.2em; }
+.hint { color: var(--muted); font-size: 0.8rem; margin-top: 10px; line-height: 1.45; }
+
+/* Chat layout */
+#chatView { display: none; flex-direction: column; flex: 1; min-height: 0; gap: 10px; }
+#chatView.active { display: flex; }
+#authView.hidden { display: none; }
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--glass);
+  backdrop-filter: blur(16px);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--glow);
+}
+.topbar h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--accent-2);
+}
+.presence { font-size: 0.75rem; color: var(--muted); }
+.presence .dot {
+  display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); margin-right: 4px;
+  box-shadow: 0 0 8px var(--ok);
+}
+.presence .dot.off { background: #666; box-shadow: none; }
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+.toolbar .btn { padding: 8px 12px; font-size: 0.8rem; border-radius: 10px; }
+
+/* Split: FilmTV + chat */
+#roomSplit {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 10px;
+}
+
+body.filmtv-open #roomSplit {
+  display: grid;
+  grid-template-columns: 1.15fr 0.85fr;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+#appMain {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 8px;
+  min-width: 0;
+}
+
+#messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 158, 181, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 240px;
+  max-height: calc(100vh - 280px);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+body.filmtv-open #messages {
+  max-height: none;
+  min-height: 0;
+}
+
+.msg {
+  max-width: 82%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  line-height: 1.45;
+  font-size: 0.95rem;
+  position: relative;
+  word-break: break-word;
+  animation: msgIn 0.35s var(--ease);
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.msg.me {
+  align-self: flex-end;
+  background: var(--bubble-me);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+  box-shadow: 0 8px 18px rgba(255, 77, 122, 0.25);
+}
+.msg.them {
+  align-self: flex-start;
+  background: var(--bubble-them);
+  border-bottom-left-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.msg .meta { font-size: 0.7rem; opacity: 0.75; margin-bottom: 4px; }
+.msg .ttl { font-size: 0.65rem; opacity: 0.7; margin-top: 4px; }
+.msg img.media { max-width: 100%; border-radius: 10px; margin-top: 6px; display: block; }
+.msg audio { width: 100%; margin-top: 6px; }
+
+.composer {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  background: var(--glass);
+  padding: 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+}
+.composer textarea {
+  flex: 1;
+  min-height: 44px;
+  max-height: 120px;
+  resize: none;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-soft);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 1rem;
+  outline: none;
+}
+.composer-actions { display: flex; flex-direction: column; gap: 6px; }
+.ttl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 0 4px;
+}
+.ttl-row label {
+  margin: 0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.ttl-row select { width: auto; padding: 4px 8px; font-size: 0.75rem; }
+
+.typing { font-size: 0.8rem; color: var(--accent-2); min-height: 1.1em; padding: 0 6px; font-style: italic; }
+
+/* ─── FilmTV ─────────────────────────────────────────── */
+.filmtv-stage {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(18px);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--glow);
+  animation: panelIn 0.45s var(--ease);
+}
+
+.filmtv-stage.open { display: flex; }
+
+.filmtv-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.filmtv-kicker {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--accent-warm);
+  font-weight: 700;
+}
+#filmtvTitle {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.filmtv-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.filmtv-sync {
+  font-size: 0.75rem;
+  color: var(--accent-2);
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255, 92, 138, 0.15);
+  border: 1px solid var(--border-soft);
+  white-space: nowrap;
+}
+.filmtv-sync.pulse {
+  animation: syncPulse 0.7s ease;
+}
+@keyframes syncPulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 16px rgba(255, 92, 138, 0.55); }
+}
+
+.filmtv-player-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 220px;
+  border-radius: 16px;
+  overflow: hidden;
+  background: #000;
+  border: 1px solid rgba(255, 158, 181, 0.15);
+}
+#filmtvVideo {
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  max-height: min(58vh, 520px);
+  object-fit: contain;
+  background: #000;
+  display: block;
+}
+.filmtv-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  background: radial-gradient(circle at center, rgba(255, 92, 138, 0.12), rgba(0, 0, 0, 0.85));
+}
+.filmtv-empty .hint { margin-top: 0; }
+.heart-mark {
+  font-size: 2.4rem;
+  color: var(--accent-2);
+  text-shadow: 0 0 24px rgba(255, 92, 138, 0.6);
+  animation: heartBeat 2.4s ease-in-out infinite;
+}
+@keyframes heartBeat {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+
+.filmtv-dock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.filmtv-dock-row label {
+  margin-top: 0;
+}
+.filmtv-url-row {
+  display: flex;
+  gap: 8px;
+}
+.filmtv-url-row input { flex: 1; }
+.filmtv-dock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.filmtv-dock-actions #filmtvTitleInput {
+  flex: 1;
+  min-width: 120px;
+}
+#filmtvError { margin-top: 0; min-height: 0; }
+
+/* Theater: video-forward, chat overlays */
+body.theater-mode #roomSplit {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+  position: relative;
+  min-height: calc(100vh - 120px);
+}
+body.theater-mode #filmtvStage {
+  grid-area: 1 / 1;
+  z-index: 1;
+}
+body.theater-mode #filmtvVideo {
+  max-height: calc(100vh - 220px);
+  min-height: 40vh;
+}
+body.theater-mode #appMain {
+  grid-area: 1 / 1;
+  z-index: 2;
+  align-self: end;
+  justify-self: end;
+  width: min(380px, 92vw);
+  margin: 12px;
+  padding: 10px;
+  border-radius: var(--radius);
+  background: rgba(18, 6, 12, 0.72);
+  backdrop-filter: blur(14px);
+  border: 1px solid var(--border-soft);
+  max-height: 46vh;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+body.theater-mode #messages {
+  max-height: 28vh;
+  min-height: 120px;
+  background: transparent;
+  border: none;
+}
+
+/* Modals / drawers */
+.overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(10, 2, 6, 0.72);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  backdrop-filter: blur(4px);
+}
+.overlay.open { display: flex; }
+.modal {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow: auto;
+  background: linear-gradient(180deg, #2a121c, #1a0c12);
+  border-radius: var(--radius);
+  border: 1px solid var(--border-soft);
+  padding: 20px;
+  box-shadow: var(--glow);
+}
+.modal h3 {
+  font-family: var(--font-display);
+  margin-bottom: 12px;
+  color: var(--accent-2);
+  font-size: 1.5rem;
+}
+.modal-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.theme-swatch {
+  height: 56px;
+  border-radius: 10px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s;
+}
+.theme-swatch:hover { transform: scale(1.03); }
+.theme-swatch.active { border-color: #fff; box-shadow: 0 0 12px rgba(255, 255, 255, 0.35); }
+
+#doodleCanvas {
+  width: 100%;
+  height: 360px;
+  background: #fff;
+  border-radius: 12px;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+#igFrameWrap {
+  width: 100%;
+  height: 420px;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+}
+#igFrameWrap iframe { width: 100%; height: 100%; border: 0; }
+#igPlaceholder {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 20px; color: var(--muted);
+}
+
+.offline-banner {
+  display: none;
+  background: linear-gradient(90deg, #5c3d00, #7a4a10);
+  color: #ffe6a8;
+  text-align: center;
+  padding: 8px;
+  font-size: 0.8rem;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+.offline-banner.show { display: block; }
+
+@media (max-width: 900px) {
+  body.filmtv-open #roomSplit {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(280px, 1fr);
+  }
+  body.filmtv-open #filmtvVideo {
+    max-height: 42vh;
+  }
+  body.theater-mode #appMain {
+    width: min(100%, calc(100% - 16px));
+    max-height: 42vh;
+  }
+}
+
+@media (max-width: 480px) {
+  #messages { max-height: calc(100vh - 320px); }
+  .toolbar .btn { flex: 1; font-size: 0.72rem; padding: 7px 8px; }
+  .filmtv-url-row { flex-direction: column; }
+  .brand { margin-top: 8px; }
+}
+```
+
+---
+
+## File: `static/js/app.js`
+
+- **Path:** `static/js/app.js`
+- **Name:** `app.js`
+
+```javascript
+/* global CryptoClient, OfflineStore, PrivacyGuard, DoodleBoard, FilmTV, io */
+
+const App = (() => {
+  const THEMES = {
+    blush: { bg: "linear-gradient(160deg,#1a0f14,#3a1528)", accent: "#ff4d7a" },
+    midnight: { bg: "linear-gradient(160deg,#0b1020,#1a2040)", accent: "#7aa2ff" },
+    forest: { bg: "linear-gradient(160deg,#0f1a14,#1a3324)", accent: "#6bcb77" },
+    sand: { bg: "linear-gradient(160deg,#2a2218,#3d3224)", accent: "#e8b86d" },
+    lavender: { bg: "linear-gradient(160deg,#1a1428,#2a1a40)", accent: "#c9a0ff" },
+  };
+
+  let state = {
+    token: null,
+    memberId: null,
+    displayName: null,
+    roomId: null,
+    password: null,
+    key: null,
+    socket: null,
+    ttlSeconds: 0,
+    mediaRecorder: null,
+    audioChunks: [],
+    recording: false,
+  };
+
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => [...document.querySelectorAll(sel)];
+
+  function headers(json = true) {
+    const h = { "X-Session-Token": state.token };
+    if (json) h["Content-Type"] = "application/json";
+    return h;
+  }
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      ...opts,
+      headers: { ...headers(!(opts.body instanceof FormData)), ...(opts.headers || {}) },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+    return data;
+  }
+
+  function showAuthError(msg) {
+    $("#authError").textContent = msg || "";
+  }
+
+  async function createRoom() {
+    showAuthError("");
+    const roomId = $("#createRoomId").value.trim();
+    const password = $("#createPassword").value;
+    const displayName = $("#createName").value.trim() || "Partner 1";
+    try {
+      const data = await fetch("/api/auth/create-room", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room_id: roomId, password, display_name: displayName }),
+      }).then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "Create failed");
+        return j;
+      });
+      await enterRoom(data, password);
+    } catch (e) {
+      showAuthError(e.message);
+    }
+  }
+
+  async function joinRoom() {
+    showAuthError("");
+    const roomId = $("#joinRoomId").value.trim();
+    const password = $("#joinPassword").value;
+    const displayName = $("#joinName").value.trim() || "Partner 2";
+    try {
+      const data = await fetch("/api/auth/join-room", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ room_id: roomId, password, display_name: displayName }),
+      }).then(async (r) => {
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || "Join failed");
+        return j;
+      });
+      await enterRoom(data, password);
+    } catch (e) {
+      showAuthError(e.message);
+    }
+  }
+
+  async function enterRoom(data, password) {
+    state.token = data.session_token;
+    state.memberId = data.member_id;
+    state.displayName = data.display_name;
+    state.roomId = data.room_id;
+    state.password = password;
+    state.key = await CryptoClient.deriveKey(state.roomId, password);
+
+    OfflineStore.setSession({
+      token: state.token,
+      memberId: state.memberId,
+      displayName: state.displayName,
+      roomId: state.roomId,
+      // password kept only in-memory for E2E; never persist password
+    });
+
+    $("#authView").classList.add("hidden");
+    $("#chatView").classList.add("active");
+    $("#roomLabel").textContent = state.roomId;
+    $("#meLabel").textContent = state.displayName;
+
+    initFilmTV();
+    connectSocket();
+    await loadMessages();
+    await flushOutbox();
+    applyTheme("blush");
+    if (data.filmtv) await FilmTV.loadState(data.filmtv);
+    else await refreshFilmTVState();
+  }
+
+  function initFilmTV() {
+    const video = $("#filmtvVideo");
+    if (!video || !window.FilmTV) return;
+    FilmTV.init({
+      video,
+      socket: state.socket,
+      tokenFn: () => state.token,
+    });
+  }
+
+  function openFilmTV() {
+    FilmTV.openStage();
+    if (state.socket) {
+      state.socket.emit("filmtv_request_sync", { token: state.token });
+    } else {
+      refreshFilmTVState();
+    }
+  }
+
+  function closeFilmTV() {
+    FilmTV.closeTheater();
+  }
+
+  function setFilmTVError(msg) {
+    const el = $("#filmtvError");
+    if (el) el.textContent = msg || "";
+  }
+
+  async function refreshFilmTVState() {
+    try {
+      const data = await api("/api/filmtv/state");
+      if (data.state) await FilmTV.loadState(data.state);
+    } catch {
+      /* ignore until room ready */
+    }
+  }
+
+  async function loadFilmTVUrl() {
+    setFilmTVError("");
+    const url = $("#filmtvUrl").value.trim();
+    const title = ($("#filmtvTitleInput").value || "").trim();
+    if (!url) {
+      setFilmTVError("Paste a direct .mp4 / .webm link.");
+      return;
+    }
+    try {
+      const data = await api("/api/filmtv/load", {
+        method: "POST",
+        body: JSON.stringify({ url, title: title || undefined }),
+      });
+      await FilmTV.loadState(data.state);
+    } catch (e) {
+      setFilmTVError(e.message);
+    }
+  }
+
+  async function uploadFilmTV(file) {
+    setFilmTVError("");
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    const title = ($("#filmtvTitleInput").value || "").trim();
+    if (title) fd.append("title", title);
+    try {
+      const res = await fetch("/api/filmtv/upload", {
+        method: "POST",
+        headers: { "X-Session-Token": state.token },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      await FilmTV.loadState(data.state);
+      $("#filmtvFile").value = "";
+    } catch (e) {
+      setFilmTVError(e.message);
+    }
+  }
+
+  async function clearFilmTV() {
+    setFilmTVError("");
+    try {
+      const data = await api("/api/filmtv/clear", { method: "POST", body: "{}" });
+      await FilmTV.loadState(data.state);
+      $("#filmtvUrl").value = "";
+    } catch (e) {
+      setFilmTVError(e.message);
+    }
+  }
+
+  function connectSocket() {
+    if (state.socket) state.socket.disconnect();
+    state.socket = io({ auth: { token: state.token } });
+    FilmTV.setSocket(state.socket);
+
+    state.socket.on("new_message", (msg) => renderMessage(msg));
+    state.socket.on("messages_expired", ({ ids }) => {
+      ids.forEach((id) => {
+        const el = document.querySelector(`[data-msg-id="${id}"]`);
+        if (el) el.remove();
+      });
+    });
+    state.socket.on("presence", (p) => {
+      const el = $("#presenceDot");
+      const txt = $("#presenceText");
+      if (p.online) {
+        el.classList.remove("off");
+        txt.textContent = `${p.display_name} online`;
+      } else {
+        el.classList.add("off");
+        txt.textContent = `${p.display_name} offline`;
+      }
+    });
+    state.socket.on("typing", (p) => {
+      $("#typing").textContent = p.typing ? `${p.display_name} is typing…` : "";
+    });
+    state.socket.on("theme_updated", (t) => {
+      if (t.theme_preset === "custom") applyCustomTheme();
+      else applyTheme(t.theme_preset);
+    });
+    state.socket.on("doodle_stroke", (p) => DoodleBoard.applyRemote({ points: p.points, ...p }));
+    state.socket.on("doodle_clear", () => DoodleBoard.clear());
+    state.socket.on("instagram_sync", (p) => showInstagram(p.url));
+    state.socket.on("doodle_saved", () => {});
+    state.socket.on("filmtv_control", (payload) => FilmTV.applyRemoteControl(payload));
+    state.socket.on("filmtv_state", (payload) => {
+      if (payload && payload.state) FilmTV.loadState(payload.state);
+    });
+    state.socket.on("connect", () => {
+      state.socket.emit("filmtv_request_sync", { token: state.token });
+    });
+  }
+
+  async function loadMessages() {
+    const box = $("#messages");
+    try {
+      const data = await api("/api/messages");
+      box.innerHTML = "";
+      for (const m of data.messages) await renderMessage(m, false);
+      OfflineStore.cacheMessages(state.roomId, data.messages);
+      scrollMessages();
+    } catch {
+      const cached = OfflineStore.getCachedMessages(state.roomId);
+      box.innerHTML = "";
+      for (const m of cached) await renderMessage(m, false);
+    }
+  }
+
+  async function renderMessage(m, scroll = true) {
+    if (document.querySelector(`[data-msg-id="${m.id}"]`)) return;
+    const div = document.createElement("div");
+    div.className = `msg ${m.sender_id === state.memberId ? "me" : "them"}`;
+    div.dataset.msgId = m.id;
+
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = m.sender_name || "Partner";
+    div.appendChild(meta);
+
+    const plain = state.key ? await CryptoClient.decryptText(state.key, m.ciphertext) : null;
+    const body = document.createElement("div");
+    body.textContent = plain || "[encrypted]";
+    div.appendChild(body);
+
+    if (m.media_url && m.msg_type === "image") {
+      try {
+        const img = await fetchDecryptedMedia(m);
+        if (img) div.appendChild(img);
+      } catch {
+        /* skip */
+      }
+    }
+    if (m.media_url && m.msg_type === "voice") {
+      try {
+        const audio = await fetchDecryptedAudio(m);
+        if (audio) div.appendChild(audio);
+      } catch {
+        /* skip */
+      }
+    }
+
+    if (m.expires_at) {
+      const ttl = document.createElement("div");
+      ttl.className = "ttl";
+      ttl.textContent = `⏱ disappears ${new Date(m.expires_at).toLocaleTimeString()}`;
+      div.appendChild(ttl);
+      scheduleExpiry(m.id, m.expires_at);
+    }
+
+    $("#messages").appendChild(div);
+    if (scroll) scrollMessages();
+  }
+
+  function scheduleExpiry(id, expiresAt) {
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (ms <= 0) {
+      const el = document.querySelector(`[data-msg-id="${id}"]`);
+      if (el) el.remove();
+      return;
+    }
+    setTimeout(() => {
+      const el = document.querySelector(`[data-msg-id="${id}"]`);
+      if (el) el.remove();
+    }, ms + 200);
+  }
+
+  async function fetchDecryptedMedia(m) {
+    const res = await fetch(m.media_url, { headers: headers(false) });
+    if (!res.ok) return null;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    let blob;
+    try {
+      const dec = await CryptoClient.decryptBlob(state.key, buf);
+      blob = new Blob([dec], { type: m.media_mime || "image/jpeg" });
+    } catch {
+      blob = new Blob([buf], { type: m.media_mime || "image/jpeg" });
+    }
+    const img = document.createElement("img");
+    img.className = "media";
+    img.src = URL.createObjectURL(blob);
+    img.draggable = false;
+    return img;
+  }
+
+  async function fetchDecryptedAudio(m) {
+    const res = await fetch(m.media_url, { headers: headers(false) });
+    if (!res.ok) return null;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    let blob;
+    try {
+      const dec = await CryptoClient.decryptBlob(state.key, buf);
+      blob = new Blob([dec], { type: m.media_mime || "audio/webm" });
+    } catch {
+      blob = new Blob([buf], { type: m.media_mime || "audio/webm" });
+    }
+    const audio = document.createElement("audio");
+    audio.controls = true;
+    audio.src = URL.createObjectURL(blob);
+    audio.controlsList = "nodownload";
+    return audio;
+  }
+
+  function scrollMessages() {
+    const box = $("#messages");
+    box.scrollTop = box.scrollHeight;
+  }
+
+  async function sendText() {
+    const input = $("#composerInput");
+    const text = input.value.trim();
+    if (!text || !state.key) return;
+    input.value = "";
+
+    const ciphertext = await CryptoClient.encryptText(state.key, text);
+    const payload = {
+      ciphertext,
+      msg_type: "text",
+      ttl_seconds: state.ttlSeconds || null,
+    };
+
+    if (!navigator.onLine) {
+      OfflineStore.enqueueOutbox({ type: "text", payload });
+      $("#offlineBanner").classList.add("show");
+      return;
+    }
+
+    try {
+      await api("/api/messages", { method: "POST", body: JSON.stringify(payload) });
+    } catch (e) {
+      OfflineStore.enqueueOutbox({ type: "text", payload });
+      alert(e.message);
+    }
+  }
+
+  async function flushOutbox() {
+    if (!navigator.onLine) return;
+    const items = OfflineStore.getOutbox();
+    const remaining = [];
+    for (const item of items) {
+      try {
+        if (item.type === "text") {
+          await api("/api/messages", { method: "POST", body: JSON.stringify(item.payload) });
+        }
+      } catch {
+        remaining.push(item);
+      }
+    }
+    OfflineStore.setOutbox(remaining);
+    if (!remaining.length) $("#offlineBanner").classList.remove("show");
+  }
+
+  async function sendPhoto(file) {
+    if (!file || !state.key) return;
+    const buf = await file.arrayBuffer();
+    const enc = await CryptoClient.encryptBlob(state.key, buf);
+    const caption = await CryptoClient.encryptText(state.key, file.name || "photo");
+    const fd = new FormData();
+    fd.append("file", new Blob([enc]), "photo.enc");
+    fd.append("ciphertext", caption);
+    fd.append("msg_type", "image");
+    fd.append("media_mime", file.type || "image/jpeg");
+    if (state.ttlSeconds) fd.append("ttl_seconds", String(state.ttlSeconds));
+
+    const res = await fetch("/api/media", {
+      method: "POST",
+      headers: { "X-Session-Token": state.token },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Upload failed");
+  }
+
+  async function toggleVoice() {
+    if (state.recording) {
+      state.mediaRecorder.stop();
+      state.recording = false;
+      $("#btnVoice").textContent = "🎙";
+      return;
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.audioChunks = [];
+    state.mediaRecorder = new MediaRecorder(stream);
+    state.mediaRecorder.ondataavailable = (e) => state.audioChunks.push(e.data);
+    state.mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(state.audioChunks, { type: "audio/webm" });
+      const buf = await blob.arrayBuffer();
+      const enc = await CryptoClient.encryptBlob(state.key, buf);
+      const caption = await CryptoClient.encryptText(state.key, "voice note");
+      const fd = new FormData();
+      fd.append("file", new Blob([enc]), "voice.enc");
+      fd.append("ciphertext", caption);
+      fd.append("msg_type", "voice");
+      fd.append("media_mime", "audio/webm");
+      if (state.ttlSeconds) fd.append("ttl_seconds", String(state.ttlSeconds));
+      await fetch("/api/media", {
+        method: "POST",
+        headers: { "X-Session-Token": state.token },
+        body: fd,
+      });
+    };
+    state.mediaRecorder.start();
+    state.recording = true;
+    $("#btnVoice").textContent = "⏹";
+  }
+
+  function applyTheme(name) {
+    const t = THEMES[name] || THEMES.blush;
+    document.documentElement.style.setProperty("--theme-image", "none");
+    document.body.style.background = `${t.bg}, radial-gradient(ellipse at 20% 10%, #4a1a2e 0%, transparent 50%)`;
+    document.documentElement.style.setProperty("--accent", t.accent);
+    $$(".theme-swatch").forEach((el) => {
+      el.classList.toggle("active", el.dataset.theme === name);
+    });
+  }
+
+  async function applyCustomTheme() {
+    document.documentElement.style.setProperty(
+      "--theme-image",
+      `url(/api/theme/background?token=${encodeURIComponent(state.token)})`
+    );
+  }
+
+  async function saveTheme(preset) {
+    applyTheme(preset);
+    await api("/api/theme", { method: "POST", body: JSON.stringify({ theme_preset: preset }) });
+  }
+
+  async function uploadTheme(file) {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch("/api/theme/upload", {
+      method: "POST",
+      headers: { "X-Session-Token": state.token },
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Theme upload failed");
+    await applyCustomTheme();
+  }
+
+  async function updateDisplayName() {
+    const name = $("#settingsName").value.trim();
+    if (!name) return;
+    await api("/api/auth/display-name", {
+      method: "POST",
+      body: JSON.stringify({ display_name: name }),
+    });
+    state.displayName = name;
+    $("#meLabel").textContent = name;
+    closeModal("settingsModal");
+  }
+
+  function openModal(id) {
+    $(`#${id}`).classList.add("open");
+  }
+  function closeModal(id) {
+    $(`#${id}`).classList.remove("open");
+  }
+
+  function showInstagram(url) {
+    const frame = $("#igFrame");
+    const ph = $("#igPlaceholder");
+    if (!url) {
+      frame.removeAttribute("src");
+      ph.style.display = "flex";
+      return;
+    }
+    // Embeddable Instagram permalinks — sync URL for co-viewing
+    let embed = url;
+    if (url.includes("instagram.com") && !url.includes("/embed")) {
+      embed = url.replace(/\/?$/, "/") + "embed";
+    }
+    frame.src = embed;
+    ph.style.display = "none";
+  }
+
+  async function syncInstagram() {
+    const url = $("#igUrl").value.trim();
+    await api("/api/instagram/sync", { method: "POST", body: JSON.stringify({ url }) });
+    if (state.socket) state.socket.emit("instagram_nav", { token: state.token, url });
+    showInstagram(url);
+  }
+
+  async function saveIgSession() {
+    const raw = $("#igSession").value.trim();
+    if (!raw || !state.key) return;
+    const enc = await CryptoClient.encryptText(state.key, raw);
+    await api("/api/instagram/session", {
+      method: "POST",
+      body: JSON.stringify({ session_ciphertext: enc }),
+    });
+    $("#igSessionStatus").textContent = "Session saved (encrypted). Partner can load it.";
+  }
+
+  async function loadIgSession() {
+    const data = await api("/api/instagram/session");
+    if (!data.session_ciphertext) {
+      $("#igSessionStatus").textContent = "No shared session yet.";
+      return;
+    }
+    const plain = await CryptoClient.decryptText(state.key, data.session_ciphertext);
+    $("#igSession").value = plain || "";
+    $("#igSessionStatus").textContent = plain ? "Session loaded." : "Could not decrypt.";
+  }
+
+  async function saveDoodle() {
+    const blob = await DoodleBoard.toBlob();
+    if (!blob) return;
+    const fd = new FormData();
+    fd.append("file", blob, "doodle.png");
+    await fetch("/api/doodle/save", {
+      method: "POST",
+      headers: { "X-Session-Token": state.token },
+      body: fd,
+    });
+  }
+
+  function bindUI() {
+    $$(".tabs button").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        $$(".tabs button").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const tab = btn.dataset.tab;
+        $("#createForm").style.display = tab === "create" ? "block" : "none";
+        $("#joinForm").style.display = tab === "join" ? "block" : "none";
+      });
+    });
+
+    $("#btnCreate").addEventListener("click", createRoom);
+    $("#btnJoin").addEventListener("click", joinRoom);
+    $("#btnSend").addEventListener("click", sendText);
+    $("#composerInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendText();
+      }
+      if (state.socket) {
+        state.socket.emit("typing", { token: state.token, typing: true });
+        clearTimeout(state._typingTimer);
+        state._typingTimer = setTimeout(() => {
+          state.socket.emit("typing", { token: state.token, typing: false });
+        }, 1200);
+      }
+    });
+
+    $("#ttlSelect").addEventListener("change", (e) => {
+      state.ttlSeconds = Number(e.target.value) || 0;
+    });
+
+    $("#photoInput").addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (f) {
+        try {
+          await sendPhoto(f);
+        } catch (err) {
+          alert(err.message);
+        }
+      }
+      e.target.value = "";
+    });
+
+    $("#btnVoice").addEventListener("click", () =>
+      toggleVoice().catch((e) => alert(e.message || "Mic permission needed"))
+    );
+
+    $("#btnSettings").addEventListener("click", () => {
+      $("#settingsName").value = state.displayName || "";
+      openModal("settingsModal");
+    });
+    $("#btnTheme").addEventListener("click", () => openModal("themeModal"));
+    $("#btnDoodle").addEventListener("click", () => openModal("doodleModal"));
+    $("#btnIg").addEventListener("click", () => openModal("igModal"));
+
+    $("#btnFilmTV").addEventListener("click", () => {
+      if (document.body.classList.contains("filmtv-open")) closeFilmTV();
+      else openFilmTV();
+    });
+    $("#btnFilmTVClose").addEventListener("click", closeFilmTV);
+    $("#btnTheater").addEventListener("click", () => {
+      FilmTV.toggleTheater();
+    });
+    $("#btnFilmTVLoad").addEventListener("click", () => loadFilmTVUrl());
+    $("#filmtvUrl").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        loadFilmTVUrl();
+      }
+    });
+    $("#filmtvFile").addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) uploadFilmTV(f);
+    });
+    $("#btnFilmTVClear").addEventListener("click", () => clearFilmTV());
+
+    $$("[data-close]").forEach((b) =>
+      b.addEventListener("click", () => closeModal(b.dataset.close))
+    );
+
+    $("#btnSaveName").addEventListener("click", () =>
+      updateDisplayName().catch((e) => alert(e.message))
+    );
+
+    $$(".theme-swatch").forEach((el) => {
+      el.addEventListener("click", () => saveTheme(el.dataset.theme).catch((e) => alert(e.message)));
+    });
+    $("#themeFile").addEventListener("change", async (e) => {
+      const f = e.target.files[0];
+      if (f) await uploadTheme(f).catch((err) => alert(err.message));
+    });
+
+    $("#btnIgSync").addEventListener("click", () => syncInstagram().catch((e) => alert(e.message)));
+    $("#btnIgSaveSession").addEventListener("click", () => saveIgSession().catch((e) => alert(e.message)));
+    $("#btnIgLoadSession").addEventListener("click", () => loadIgSession().catch((e) => alert(e.message)));
+
+    $("#doodleColor").addEventListener("input", (e) => DoodleBoard.setColor(e.target.value));
+    $("#doodleWidth").addEventListener("input", (e) => DoodleBoard.setWidth(e.target.value));
+    $("#btnDoodlePen").addEventListener("click", () => DoodleBoard.setTool("pen"));
+    $("#btnDoodleEraser").addEventListener("click", () => DoodleBoard.setTool("eraser"));
+    $("#btnDoodleClear").addEventListener("click", () => {
+      DoodleBoard.clear();
+      if (state.socket) state.socket.emit("doodle_clear", { token: state.token });
+    });
+    $("#btnDoodleSave").addEventListener("click", () => saveDoodle().catch((e) => alert(e.message)));
+
+    DoodleBoard.init($("#doodleCanvas"), (stroke) => {
+      if (state.socket) {
+        state.socket.emit("doodle_stroke", {
+          token: state.token,
+          points: { from: stroke.from, to: stroke.to },
+          color: stroke.color,
+          width: stroke.width,
+          tool: stroke.tool,
+        });
+      }
+    });
+
+    window.addEventListener("online", () => {
+      $("#offlineBanner").classList.remove("show");
+      flushOutbox();
+      loadMessages();
+    });
+    window.addEventListener("offline", () => $("#offlineBanner").classList.add("show"));
+
+    // Block export UI forever
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("[data-export]")) {
+        e.preventDefault();
+        alert("Chat history export is permanently disabled for privacy.");
+      }
+    });
+  }
+
+  async function tryRestore() {
+    const s = OfflineStore.getSession();
+    if (!s || !s.token) return;
+    try {
+      const res = await fetch("/api/auth/session-check", {
+        headers: { "X-Session-Token": s.token },
+      });
+      if (!res.ok) {
+        OfflineStore.clearSession();
+        return;
+      }
+      const data = await res.json();
+      // Password required to unlock E2E key — prompt once
+      const password = prompt("Enter room password to unlock encrypted messages:");
+      if (!password) return;
+      state.token = data.session_token;
+      state.memberId = data.member_id;
+      state.displayName = data.display_name;
+      state.roomId = data.room_id;
+      state.password = password;
+      state.key = await CryptoClient.deriveKey(state.roomId, password);
+      $("#authView").classList.add("hidden");
+      $("#chatView").classList.add("active");
+      $("#roomLabel").textContent = state.roomId;
+      $("#meLabel").textContent = state.displayName;
+      initFilmTV();
+      connectSocket();
+      await loadMessages();
+      try {
+        const me = await api("/api/auth/me");
+        if (me.filmtv) await FilmTV.loadState(me.filmtv);
+      } catch {
+        /* optional */
+      }
+    } catch {
+      /* stay on auth */
+    }
+  }
+
+  function init() {
+    PrivacyGuard.init();
+    bindUI();
+    initFilmTV();
+    tryRestore();
+  }
+
+  return { init };
+})();
+
+document.addEventListener("DOMContentLoaded", () => App.init());
+```
+
+---
+
+## File: `static/js/check_links.py`
+
+- **Path:** `static/js/check_links.py`
+- **Name:** `check_links.py`
+
+```python
+import os
+import re
+
+# Project directories jo scan karni hain
+TEMPLATE_FOLDER = "templates"  # Jahan HTML files hain
+STATIC_FOLDER = "static"       # Jahan JS/CSS files hain
+APP_FILE = "app.py"            # Main Flask file
+
+def check_project_links():
+    print("=== PROJECT LINK & ROUTE CHECKER ===")
+    missing_items = []
+    
+    # 1. Check if main app and folders exist
+    if not os.path.exists(APP_FILE):
+        missing_items.append(f"Critical Missing File: {APP_FILE} nahi mila!")
+    if not os.path.exists(TEMPLATE_FOLDER):
+        missing_items.append(f"Missing Folder: '{TEMPLATE_FOLDER}' folder nahi mila!")
+        
+    # 2. Extract Flask routes from app.py
+    flask_routes = set()
+    if os.path.exists(APP_FILE):
+        with open(APP_FILE, "r", encoding="utf-8") as f:
+            content = f.read()
+            # @app.route('/path') dhundne ke liye regex
+            routes = re.findall(r"@app\.route\(['\"']([^'\"']+)['\"']\)", content)
+            flask_routes.update(routes)
+            print(f"-> Flask routes found in {APP_FILE}: {list(flask_routes)}")
+
+    # 3. Check HTML templates for missing endpoints or assets
+    if os.path.exists(TEMPLATE_FOLDER):
+        for root, dirs, files in os.walk(TEMPLATE_FOLDER):
+            for file in files:
+                if file.endswith(".html"):
+                    filepath = os.path.join(root, file)
+                    with open(filepath, "r", encoding="utf-8") as tf:
+                        t_content = tf.read()
+                        
+                        # Check for url_for missing endpoints inside templates
+                        url_fors = re.findall(r"url_for\(['\"']([^'\"']+)['\"']\)", t_content)
+                        for uf in url_fors:
+                            if uf != 'static' and uf not in [r.strip('/') for r in flask_routes]:
+                                missing_items.append(f"HTML Template ({file}): url_for('{uf}') ka route app.py mein defined nahi hai!")
+
+    # Final Report
+    print("\n=== SCAN REPORT ===")
+    if missing_items:
+        print("Yeh missing links/issues pakde gaye hain:")
+        for item in missing_items:
+            print(f" [X] {item}")
+    else:
+        print(" [V] Sabhi routes aur links ekdum sahi jagah linked hain, koi missing link nahi mila!")
+
+if __name__ == "__main__":
+    check_project_links()
+```
+
+---
+
+## File: `static/js/crypto.js`
+
+- **Path:** `static/js/crypto.js`
+- **Name:** `crypto.js`
+
+```javascript
+/**
+ * Client-side E2E helpers — key derived from Room ID + password.
+ * Server only ever sees ciphertext.
+ */
+const CryptoClient = (() => {
+  const te = new TextEncoder();
+  const td = new TextDecoder();
+
+  function b64encode(buf) {
+    const bytes = buf instanceof ArrayBuffer ? new Uint8Array(buf) : buf;
+    let s = "";
+    bytes.forEach((b) => (s += String.fromCharCode(b)));
+    return btoa(s);
+  }
+
+  function b64decode(str) {
+    const bin = atob(str);
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  async function deriveKey(roomId, password) {
+    const material = await crypto.subtle.importKey(
+      "raw",
+      te.encode(`${roomId}:${password}`),
+      "PBKDF2",
+      false,
+      ["deriveKey"]
+    );
+    const salt = te.encode(`ipsita-sathi-v1:${roomId}`);
+    return crypto.subtle.deriveKey(
+      { name: "PBKDF2", salt, iterations: 210000, hash: "SHA-256" },
+      material,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"]
+    );
+  }
+
+  async function encryptText(key, plaintext) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      te.encode(plaintext)
+    );
+    return `v1.${b64encode(iv)}.${b64encode(ct)}`;
+  }
+
+  async function decryptText(key, payload) {
+    try {
+      const parts = payload.split(".");
+      if (parts.length !== 3 || parts[0] !== "v1") return null;
+      const iv = b64decode(parts[1]);
+      const ct = b64decode(parts[2]);
+      const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+      return td.decode(pt);
+    } catch {
+      return null;
+    }
+  }
+
+  async function encryptBlob(key, arrayBuffer) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      arrayBuffer
+    );
+    const out = new Uint8Array(iv.length + ct.byteLength);
+    out.set(iv, 0);
+    out.set(new Uint8Array(ct), iv.length);
+    return out;
+  }
+
+  async function decryptBlob(key, encryptedBytes) {
+    const iv = encryptedBytes.slice(0, 12);
+    const ct = encryptedBytes.slice(12);
+    return crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
+  }
+
+  return { deriveKey, encryptText, decryptText, encryptBlob, decryptBlob, b64encode };
+})();
+```
+
+---
+
+## File: `static/js/doodle.js`
+
+- **Path:** `static/js/doodle.js`
+- **Name:** `doodle.js`
+
+```javascript
+/** Shared realtime doodle board. */
+const DoodleBoard = (() => {
+  let canvas, ctx, drawing = false, last = null;
+  let color = "#e91e63";
+  let width = 3;
+  let tool = "pen";
+  let emitStroke = null;
+
+  function init(canvasEl, onStroke) {
+    canvas = canvasEl;
+    ctx = canvas.getContext("2d");
+    emitStroke = onStroke;
+    resize();
+    window.addEventListener("resize", resize);
+
+    const pos = (e) => {
+      const r = canvas.getBoundingClientRect();
+      const t = e.touches ? e.touches[0] : e;
+      return {
+        x: ((t.clientX - r.left) / r.width) * canvas.width,
+        y: ((t.clientY - r.top) / r.height) * canvas.height,
+      };
+    };
+
+    const start = (e) => {
+      e.preventDefault();
+      drawing = true;
+      last = pos(e);
+    };
+    const move = (e) => {
+      if (!drawing) return;
+      e.preventDefault();
+      const p = pos(e);
+      strokeLocal(last, p, color, width, tool);
+      if (emitStroke) emitStroke({ from: last, to: p, color, width, tool });
+      last = p;
+    };
+    const end = () => {
+      drawing = false;
+      last = null;
+    };
+
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", end);
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end);
+  }
+
+  function resize() {
+    if (!canvas) return;
+    const ratio = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    const img = ctx.getImageData(0, 0, canvas.width || 1, canvas.height || 1);
+    canvas.width = w * ratio;
+    canvas.height = h * ratio;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    try {
+      ctx.putImageData(img, 0, 0);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function strokeLocal(from, to, c, w, t) {
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = w;
+    if (t === "eraser") {
+      ctx.globalCompositeOperation = "destination-out";
+      ctx.strokeStyle = "rgba(0,0,0,1)";
+    } else {
+      ctx.globalCompositeOperation = "source-over";
+      ctx.strokeStyle = c;
+    }
+    ctx.beginPath();
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
+    ctx.stroke();
+  }
+
+  function applyRemote(payload) {
+    if (!payload || !payload.points) return;
+    const { from, to } = payload.points;
+    if (!from || !to) return;
+    strokeLocal(from, to, payload.color, payload.width, payload.tool);
+  }
+
+  function clear() {
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+
+  function setColor(c) {
+    color = c;
+  }
+  function setWidth(w) {
+    width = Number(w) || 3;
+  }
+  function setTool(t) {
+    tool = t;
+  }
+
+  function toBlob() {
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
+  return { init, applyRemote, clear, setColor, setWidth, setTool, toBlob };
+})();
+```
+
+---
+
+## File: `static/js/filmtv.js`
+
+- **Path:** `static/js/filmtv.js`
+- **Name:** `filmtv.js`
+
+```javascript
+/**
+ * FilmTV Watch Party — HTML5 <video> only.
+ * Play / pause / seek synced via Flask-SocketIO. No YouTube, no screen share.
+ */
+const FilmTV = (() => {
+  let videoEl = null;
+  let socket = null;
+  let getToken = () => null;
+  let applyingRemote = false;
+  let heartbeatTimer = null;
+  let lastEmittedSeek = 0;
+  let hasSource = false;
+
+  function init({ video, socket: sock, tokenFn }) {
+    videoEl = video;
+    socket = sock;
+    getToken = tokenFn;
+
+    videoEl.addEventListener("play", () => emitControl("play"));
+    videoEl.addEventListener("pause", () => emitControl("pause"));
+    videoEl.addEventListener("seeked", () => {
+      if (applyingRemote) return;
+      const now = Date.now();
+      if (now - lastEmittedSeek < 350) return;
+      lastEmittedSeek = now;
+      emitControl("seek");
+    });
+
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    heartbeatTimer = setInterval(() => {
+      if (applyingRemote || !hasSource || !videoEl || videoEl.paused) return;
+      emitControl("heartbeat");
+    }, 8000);
+  }
+
+  function setSocket(sock) {
+    socket = sock;
+  }
+
+  function emitControl(action) {
+    if (applyingRemote || !socket || !hasSource) return;
+    socket.emit("filmtv_control", {
+      token: getToken(),
+      action,
+      position: videoEl ? videoEl.currentTime || 0 : 0,
+    });
+    updateStatusBadge(action);
+  }
+
+  function updateStatusBadge(action) {
+    const el = document.getElementById("filmtvSyncBadge");
+    if (!el) return;
+    const labels = {
+      play: "▶ playing together",
+      pause: "❚❚ paused together",
+      seek: "⟷ seek synced",
+      heartbeat: "♡ in sync",
+      load: "loaded for both",
+      clear: "cleared",
+    };
+    el.textContent = labels[action] || "♡ synced";
+    el.classList.add("pulse");
+    setTimeout(() => el.classList.remove("pulse"), 700);
+  }
+
+  function resolveSrc(state) {
+    if (!state || !state.source_type) return null;
+    if (state.source_type === "upload") {
+      return `/api/filmtv/stream?token=${encodeURIComponent(getToken())}`;
+    }
+    if (state.source_type === "url") {
+      return state.stream_url || state.source;
+    }
+    return null;
+  }
+
+  async function loadState(state) {
+    if (!state || !state.source_type || !state.source) {
+      clearPlayer();
+      return;
+    }
+    // Reject legacy youtube leftovers from older sessions
+    if (state.source_type === "youtube") {
+      clearPlayer();
+      const title = document.getElementById("filmtvTitle");
+      if (title) title.textContent = "Use a direct mp4/webm URL or upload a file";
+      return;
+    }
+
+    const titleEl = document.getElementById("filmtvTitle");
+    if (titleEl) titleEl.textContent = state.title || "FilmTV Watch Party";
+
+    const src = resolveSrc(state);
+    if (!src || !videoEl) return;
+
+    applyingRemote = true;
+    hasSource = true;
+    const empty = document.getElementById("filmtvEmpty");
+    if (empty) empty.style.display = "none";
+
+    if (videoEl.getAttribute("src") !== src) {
+      videoEl.src = src;
+      videoEl.load();
+      await waitEvent(videoEl, "loadedmetadata").catch(() => {});
+    }
+
+    const target = Number(state.position) || 0;
+    if (Math.abs((videoEl.currentTime || 0) - target) > 0.4) {
+      try {
+        videoEl.currentTime = target;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (state.playing) {
+      try {
+        await videoEl.play();
+      } catch {
+        /* autoplay may require a tap */
+      }
+    } else {
+      videoEl.pause();
+    }
+
+    applyingRemote = false;
+    updateStatusBadge("load");
+  }
+
+  function clearPlayer() {
+    hasSource = false;
+    if (videoEl) {
+      videoEl.pause();
+      videoEl.removeAttribute("src");
+      videoEl.load();
+    }
+    const title = document.getElementById("filmtvTitle");
+    if (title) title.textContent = "FilmTV Watch Party";
+    const empty = document.getElementById("filmtvEmpty");
+    if (empty) empty.style.display = "flex";
+    updateStatusBadge("clear");
+  }
+
+  async function applyRemoteControl(payload) {
+    if (!payload || !payload.state) return;
+    const { action, state } = payload;
+
+    if (action === "load" || !hasSource) {
+      await loadState(state);
+      return;
+    }
+
+    applyingRemote = true;
+    try {
+      await syncPlayback(state);
+      updateStatusBadge(action);
+    } finally {
+      setTimeout(() => {
+        applyingRemote = false;
+      }, 250);
+    }
+  }
+
+  async function syncPlayback(state) {
+    if (!videoEl || !hasSource) return;
+    const target = Number(state.position) || 0;
+    const driftTol = 1.1;
+
+    if (Math.abs((videoEl.currentTime || 0) - target) > driftTol) {
+      try {
+        videoEl.currentTime = target;
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (state.playing && videoEl.paused) {
+      try {
+        await videoEl.play();
+      } catch {
+        /* ignore */
+      }
+    } else if (!state.playing && !videoEl.paused) {
+      videoEl.pause();
+    }
+  }
+
+  function waitEvent(el, name, ms = 10000) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error("timeout")), ms);
+      el.addEventListener(
+        name,
+        () => {
+          clearTimeout(t);
+          resolve();
+        },
+        { once: true }
+      );
+    });
+  }
+
+  function openStage() {
+    document.body.classList.add("filmtv-open");
+    document.getElementById("filmtvStage")?.classList.add("open");
+    document.getElementById("btnFilmTV")?.classList.add("active");
+  }
+
+  function openTheater() {
+    openStage();
+    document.body.classList.add("theater-mode");
+  }
+
+  function closeTheater() {
+    document.body.classList.remove("theater-mode", "filmtv-open");
+    document.getElementById("filmtvStage")?.classList.remove("open");
+    document.getElementById("btnFilmTV")?.classList.remove("active");
+  }
+
+  function toggleTheater() {
+    if (!document.getElementById("filmtvStage")?.classList.contains("open")) {
+      openTheater();
+      return;
+    }
+    if (document.body.classList.contains("theater-mode")) {
+      document.body.classList.remove("theater-mode");
+      document.body.classList.add("filmtv-open");
+    } else {
+      document.body.classList.add("theater-mode", "filmtv-open");
+    }
+  }
+
+  return {
+    init,
+    setSocket,
+    loadState,
+    applyRemoteControl,
+    clearPlayer,
+    openStage,
+    openTheater,
+    closeTheater,
+    toggleTheater,
+  };
+})();
+```
+
+---
+
+## File: `static/js/offline.js`
+
+- **Path:** `static/js/offline.js`
+- **Name:** `offline.js`
+
+```javascript
+/**
+ * Offline cache + outbox sync for Ipsita-Sathi.
+ */
+const OfflineStore = (() => {
+  const KEY = "ipsita_sathi_cache_v1";
+
+  function load() {
+    try {
+      return JSON.parse(localStorage.getItem(KEY) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function save(data) {
+    localStorage.setItem(KEY, JSON.stringify(data));
+  }
+
+  function setSession(session) {
+    const d = load();
+    d.session = session;
+    save(d);
+  }
+
+  function getSession() {
+    return load().session || null;
+  }
+
+  function clearSession() {
+    const d = load();
+    delete d.session;
+    save(d);
+  }
+
+  function cacheMessages(roomId, messages) {
+    const d = load();
+    d.messages = d.messages || {};
+    d.messages[roomId] = messages.slice(-200);
+    save(d);
+  }
+
+  function getCachedMessages(roomId) {
+    return (load().messages || {})[roomId] || [];
+  }
+
+  function enqueueOutbox(item) {
+    const d = load();
+    d.outbox = d.outbox || [];
+    d.outbox.push({ ...item, queuedAt: Date.now() });
+    save(d);
+  }
+
+  function getOutbox() {
+    return load().outbox || [];
+  }
+
+  function setOutbox(items) {
+    const d = load();
+    d.outbox = items;
+    save(d);
+  }
+
+  return {
+    setSession,
+    getSession,
+    clearSession,
+    cacheMessages,
+    getCachedMessages,
+    enqueueOutbox,
+    getOutbox,
+    setOutbox,
+  };
+})();
+```
+
+---
+
+## File: `static/js/privacy.js`
+
+- **Path:** `static/js/privacy.js`
+- **Name:** `privacy.js`
+
+```javascript
+/** Screenshot / capture discouragement (best-effort on web). */
+const PrivacyGuard = (() => {
+  function init() {
+    // Block common copy/export shortcuts for chat area
+    document.addEventListener("keydown", (e) => {
+      const blocked =
+        (e.ctrlKey || e.metaKey) &&
+        ["s", "p", "u"].includes(e.key.toLowerCase());
+      const printScreen = e.key === "PrintScreen";
+      if (blocked || printScreen) {
+        e.preventDefault();
+        flashCaptureGuard();
+      }
+    });
+
+    document.addEventListener("contextmenu", (e) => {
+      if (e.target.closest("#messages, #doodleCanvas")) {
+        e.preventDefault();
+      }
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        document.body.classList.add("privacy-blur");
+      } else {
+        document.body.classList.remove("privacy-blur");
+      }
+    });
+
+    window.addEventListener("blur", () => document.body.classList.add("privacy-blur"));
+    window.addEventListener("focus", () => document.body.classList.remove("privacy-blur"));
+
+    // Disable drag of media
+    document.addEventListener("dragstart", (e) => {
+      if (e.target.closest("#messages")) e.preventDefault();
+    });
+  }
+
+  function flashCaptureGuard() {
+    document.body.classList.add("capture-guard");
+    setTimeout(() => document.body.classList.remove("capture-guard"), 800);
+  }
+
+  return { init, flashCaptureGuard };
+})();
+```
+
+---
+
+## File: `templates/index.html`
+
+- **Path:** `templates/index.html`
+- **Name:** `index.html`
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Ipsita-Sathi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <div id="appShell">
+    <div class="offline-banner" id="offlineBanner">You're offline — messages will sync when connection returns.</div>
+
+    <div id="authView">
+      <div class="brand">Ipsita-Sathi</div>
+      <p class="tagline">A private room for two hearts. Shared ID + secret password.</p>
+      <div class="panel">
+        <div class="tabs">
+          <button type="button" class="active" data-tab="create">Create room</button>
+          <button type="button" data-tab="join">Join room</button>
+        </div>
+
+        <div id="createForm">
+          <label>Shared Room ID</label>
+          <input type="text" id="createRoomId" autocomplete="off" placeholder="e.g. our-secret-space" />
+          <label>Secret Password</label>
+          <input type="password" id="createPassword" autocomplete="new-password" placeholder="min 6 characters" />
+          <label>Your display name</label>
+          <input type="text" id="createName" maxlength="64" placeholder="Your name" />
+          <button type="button" class="btn block" id="btnCreate">Create private room</button>
+        </div>
+
+        <div id="joinForm" style="display:none;">
+          <label>Shared Room ID</label>
+          <input type="text" id="joinRoomId" autocomplete="off" />
+          <label>Secret Password</label>
+          <input type="password" id="joinPassword" autocomplete="current-password" />
+          <label>Your display name</label>
+          <input type="text" id="joinName" maxlength="64" placeholder="Your name" />
+          <button type="button" class="btn block" id="btnJoin">Enter room</button>
+        </div>
+
+        <p class="err" id="authError"></p>
+        <p class="hint">Only two people can join. Messages are end-to-end encrypted with your room password. No public rooms. No AI chatbots. No history export.</p>
+      </div>
+    </div>
+
+    <div id="chatView">
+      <div class="topbar">
+        <div>
+          <h2 id="roomLabel">Room</h2>
+          <div class="presence">
+            <span class="dot" id="presenceDot"></span>
+            <span id="presenceText">connecting…</span>
+            · <span id="meLabel"></span>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="btn ghost" id="btnFilmTV" title="FilmTV Watch Party">FilmTV</button>
+          <button type="button" class="btn ghost" id="btnTheme">Theme</button>
+          <button type="button" class="btn ghost" id="btnDoodle">Doodle</button>
+          <button type="button" class="btn ghost" id="btnIg">IG Sync</button>
+          <button type="button" class="btn ghost" id="btnSettings">You</button>
+        </div>
+      </div>
+
+      <div id="roomSplit">
+        <!-- FilmTV Watch Party stage -->
+        <section id="filmtvStage" class="filmtv-stage" aria-label="FilmTV Watch Party">
+          <header class="filmtv-header">
+            <div>
+              <p class="filmtv-kicker">Watch together</p>
+              <h3 id="filmtvTitle">FilmTV Watch Party</h3>
+            </div>
+            <div class="filmtv-header-actions">
+              <span class="filmtv-sync" id="filmtvSyncBadge">♡ ready</span>
+              <button type="button" class="btn ghost sm" id="btnTheater" title="Theater mode">Theater</button>
+              <button type="button" class="btn ghost sm" id="btnFilmTVClose" title="Close FilmTV">Close</button>
+            </div>
+          </header>
+
+          <div class="filmtv-player-wrap">
+            <video id="filmtvVideo" playsinline controls controlslist="nodownload"></video>
+            <div id="filmtvEmpty" class="filmtv-empty">
+              <span class="heart-mark" aria-hidden="true">♡</span>
+              <p>Upload an MP4/WebM or paste a direct video link.</p>
+              <p class="hint">Native streaming only — no YouTube, no third-party players.</p>
+            </div>
+          </div>
+
+          <div class="filmtv-dock">
+            <div class="filmtv-dock-row">
+              <label for="filmtvUrl">Direct video URL</label>
+              <div class="filmtv-url-row">
+                <input type="url" id="filmtvUrl" placeholder="https://…/movie.mp4" />
+                <button type="button" class="btn" id="btnFilmTVLoad">Load</button>
+              </div>
+            </div>
+            <div class="filmtv-dock-row filmtv-dock-actions">
+              <label class="btn ghost file-btn">
+                Upload video
+                <input type="file" id="filmtvFile" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,.mkv,.m4v" hidden />
+              </label>
+              <input type="text" id="filmtvTitleInput" maxlength="256" placeholder="Optional title" />
+              <button type="button" class="btn ghost" id="btnFilmTVClear">Clear</button>
+            </div>
+            <p class="err" id="filmtvError"></p>
+          </div>
+        </section>
+
+        <div id="appMain">
+          <div id="messages" aria-live="polite"></div>
+          <div class="typing" id="typing"></div>
+          <div class="ttl-row">
+            <label for="ttlSelect">Disappear after</label>
+            <select id="ttlSelect">
+              <option value="0">Off</option>
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+              <option value="300">5 minutes</option>
+              <option value="3600">1 hour</option>
+              <option value="86400">24 hours</option>
+            </select>
+          </div>
+          <div class="composer">
+            <div class="composer-actions">
+              <label class="btn icon ghost" title="Photo" style="cursor:pointer;">
+                📷
+                <input type="file" id="photoInput" accept="image/*" hidden />
+              </label>
+              <button type="button" class="btn icon ghost" id="btnVoice" title="Voice note">🎙</button>
+            </div>
+            <textarea id="composerInput" rows="1" placeholder="Write something private…" maxlength="4000"></textarea>
+            <button type="button" class="btn icon" id="btnSend" title="Send">➤</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="overlay" id="settingsModal">
+    <div class="modal">
+      <h3>Display name</h3>
+      <label>How you appear in this room</label>
+      <input type="text" id="settingsName" maxlength="64" />
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnSaveName">Save</button>
+        <button type="button" class="btn ghost" data-close="settingsModal">Close</button>
+      </div>
+      <p class="hint">Export / download chat history is permanently disabled.</p>
+    </div>
+  </div>
+
+  <!-- Theme -->
+  <div class="overlay" id="themeModal">
+    <div class="modal">
+      <h3>Theme</h3>
+      <div class="theme-grid">
+        <div class="theme-swatch active" data-theme="blush" style="background:linear-gradient(135deg,#3a1528,#ff4d7a);"></div>
+        <div class="theme-swatch" data-theme="midnight" style="background:linear-gradient(135deg,#1a2040,#7aa2ff);"></div>
+        <div class="theme-swatch" data-theme="forest" style="background:linear-gradient(135deg,#1a3324,#6bcb77);"></div>
+        <div class="theme-swatch" data-theme="sand" style="background:linear-gradient(135deg,#3d3224,#e8b86d);"></div>
+        <div class="theme-swatch" data-theme="lavender" style="background:linear-gradient(135deg,#2a1a40,#c9a0ff);"></div>
+      </div>
+      <label style="margin-top:14px;">Upload custom background</label>
+      <input type="file" id="themeFile" accept="image/*" />
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="themeModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Doodle -->
+  <div class="overlay" id="doodleModal">
+    <div class="modal">
+      <h3>Secret doodle board</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
+        <input type="color" id="doodleColor" value="#e91e63" />
+        <input type="range" id="doodleWidth" min="1" max="24" value="3" />
+        <button type="button" class="btn ghost" id="btnDoodlePen">Pen</button>
+        <button type="button" class="btn ghost" id="btnDoodleEraser">Eraser</button>
+        <button type="button" class="btn ghost" id="btnDoodleClear">Clear</button>
+        <button type="button" class="btn" id="btnDoodleSave">Save locally</button>
+      </div>
+      <canvas id="doodleCanvas" width="800" height="360"></canvas>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="doodleModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instagram sync -->
+  <div class="overlay" id="igModal">
+    <div class="modal">
+      <h3>Shared Instagram view</h3>
+      <p class="hint">Paste a Reel or post URL to co-watch in sync. Optionally store an encrypted session note for yourselves (never sent to third parties by this app).</p>
+      <label>Instagram URL (reel / post)</label>
+      <input type="url" id="igUrl" placeholder="https://www.instagram.com/reel/..." />
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnIgSync">Sync to both</button>
+      </div>
+      <div id="igFrameWrap" style="margin-top:12px;">
+        <div id="igPlaceholder">No URL synced yet</div>
+        <iframe id="igFrame" title="Instagram sync" sandbox="allow-scripts allow-same-origin allow-popups" referrerpolicy="no-referrer"></iframe>
+      </div>
+      <label style="margin-top:12px;">Encrypted session note (optional)</label>
+      <textarea id="igSession" rows="3" style="width:100%;padding:10px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid rgba(255,143,171,.3);color:inherit;" placeholder="Paste session cookies / notes — stored encrypted with your room key"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btnIgSaveSession">Save encrypted</button>
+        <button type="button" class="btn ghost" id="btnIgLoadSession">Load</button>
+        <button type="button" class="btn ghost" data-close="igModal">Close</button>
+      </div>
+      <p class="err" id="igSessionStatus" style="color:var(--muted);"></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/js/crypto.js"></script>
+  <script src="/static/js/offline.js"></script>
+  <script src="/static/js/privacy.js"></script>
+  <script src="/static/js/doodle.js"></script>
+  <script src="/static/js/filmtv.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
+```
+
+---
+
+## File: `wsgi.py`
+
+- **Path:** `wsgi.py`
+- **Name:** `wsgi.py`
+
+```python
+"""Deprecated. Use: python run.py
+
+This file intentionally does not import the `app` package under the name `app`
+(which would shadow the package directory).
+"""
+
+if __name__ == "__main__":
+    from run import app
+    from app.extensions import socketio
+
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True)
+```
+
+---

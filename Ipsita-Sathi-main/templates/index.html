@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Ipsita-Sathi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Nunito:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+  <div id="appShell">
+    <div class="offline-banner" id="offlineBanner">You're offline — messages will sync when connection returns.</div>
+
+    <div id="authView">
+      <div class="brand">Ipsita-Sathi</div>
+      <p class="tagline">A private room for two hearts. Shared ID + secret password.</p>
+      <div class="panel">
+        <div class="tabs">
+          <button type="button" class="active" data-tab="create">Create room</button>
+          <button type="button" data-tab="join">Join room</button>
+        </div>
+
+        <div id="createForm">
+          <label>Shared Room ID</label>
+          <input type="text" id="createRoomId" autocomplete="off" placeholder="e.g. our-secret-space" />
+          <label>Secret Password</label>
+          <input type="password" id="createPassword" autocomplete="new-password" placeholder="min 12 characters, mixed" />
+          <label>Your display name</label>
+          <input type="text" id="createName" maxlength="64" placeholder="Your name" />
+          <button type="button" class="btn block" id="btnCreate">Create private room</button>
+        </div>
+
+        <div id="joinForm" style="display:none;">
+          <label>Shared Room ID</label>
+          <input type="text" id="joinRoomId" autocomplete="off" />
+          <label>Secret Password</label>
+          <input type="password" id="joinPassword" autocomplete="current-password" placeholder="min 12 characters" />
+          <label>Your display name</label>
+          <input type="text" id="joinName" maxlength="64" placeholder="Your name" />
+          <button type="button" class="btn block" id="btnJoin">Enter room</button>
+        </div>
+
+        <p class="err" id="authError"></p>
+        <p class="hint">Only two people can join. Messages are end-to-end encrypted with your room password. No public rooms. No AI chatbots. No history export.</p>
+      </div>
+    </div>
+
+    <div id="chatView">
+      <div class="topbar">
+        <div>
+          <h2 id="roomLabel">Room</h2>
+          <div class="presence">
+            <span class="dot" id="presenceDot"></span>
+            <span id="presenceText">connecting…</span>
+            · <span id="meLabel"></span>
+          </div>
+        </div>
+        <div class="toolbar">
+          <button type="button" class="btn ghost" id="btnFilmTV" title="FilmTV Watch Party">FilmTV</button>
+          <button type="button" class="btn ghost" id="btnTheme">Theme</button>
+          <button type="button" class="btn ghost" id="btnDoodle">Doodle</button>
+          <button type="button" class="btn ghost" id="btnIg">IG Sync</button>
+          <button type="button" class="btn ghost" id="btnSettings">You</button>
+          <button type="button" class="btn ghost" id="btnLogoutTop" title="Revoke session">Leave</button>
+        </div>
+      </div>
+
+      <div id="roomSplit">
+        <!-- FilmTV Watch Party stage -->
+        <section id="filmtvStage" class="filmtv-stage" aria-label="FilmTV Watch Party">
+          <header class="filmtv-header">
+            <div>
+              <p class="filmtv-kicker">Watch together</p>
+              <h3 id="filmtvTitle">FilmTV Watch Party</h3>
+            </div>
+            <div class="filmtv-header-actions">
+              <span class="filmtv-sync" id="filmtvSyncBadge">♡ ready</span>
+              <button type="button" class="btn ghost sm" id="btnTheater" title="Theater mode">Theater</button>
+              <button type="button" class="btn ghost sm" id="btnFilmTVClose" title="Close FilmTV">Close</button>
+            </div>
+          </header>
+
+          <div class="filmtv-player-wrap">
+            <video id="filmtvVideo" playsinline controls controlslist="nodownload"></video>
+            <div id="filmtvEmpty" class="filmtv-empty">
+              <span class="heart-mark" aria-hidden="true">♡</span>
+              <p>Upload an MP4/WebM or paste a direct video link.</p>
+              <p class="hint">Native streaming only — no YouTube, no third-party players.</p>
+            </div>
+          </div>
+
+          <div class="filmtv-dock">
+            <div class="filmtv-dock-row">
+              <label for="filmtvUrl">Direct video URL</label>
+              <div class="filmtv-url-row">
+                <input type="url" id="filmtvUrl" placeholder="https://…/movie.mp4" />
+                <button type="button" class="btn" id="btnFilmTVLoad">Load</button>
+              </div>
+            </div>
+            <div class="filmtv-dock-row filmtv-dock-actions">
+              <label class="btn ghost file-btn">
+                Upload video
+                <input type="file" id="filmtvFile" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,.mkv,.m4v" hidden />
+              </label>
+              <input type="text" id="filmtvTitleInput" maxlength="256" placeholder="Optional title" />
+              <button type="button" class="btn ghost" id="btnFilmTVClear">Clear</button>
+            </div>
+            <p class="err" id="filmtvError"></p>
+          </div>
+        </section>
+
+        <div id="appMain">
+          <div id="messages" aria-live="polite"></div>
+          <div class="typing" id="typing"></div>
+          <div class="ttl-row">
+            <label for="ttlSelect">Disappear after</label>
+            <select id="ttlSelect">
+              <option value="0">Off</option>
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+              <option value="300">5 minutes</option>
+              <option value="3600">1 hour</option>
+              <option value="86400">24 hours</option>
+            </select>
+          </div>
+          <div class="composer">
+            <div class="composer-actions">
+              <label class="btn icon ghost" title="Photo" style="cursor:pointer;">
+                📷
+                <input type="file" id="photoInput" accept="image/*" hidden />
+              </label>
+              <button type="button" class="btn icon ghost" id="btnVoice" title="Voice note">🎙</button>
+            </div>
+            <textarea id="composerInput" rows="1" placeholder="Write something private…" maxlength="4000"></textarea>
+            <button type="button" class="btn icon" id="btnSend" title="Send">➤</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="overlay" id="settingsModal">
+    <div class="modal">
+      <h3>Display name</h3>
+      <label>How you appear in this room</label>
+      <input type="text" id="settingsName" maxlength="64" />
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnSaveName">Save</button>
+        <button type="button" class="btn ghost" id="btnLogout" title="Revoke this device session">Log out</button>
+        <button type="button" class="btn ghost" data-close="settingsModal">Close</button>
+      </div>
+      <p class="hint">Export / download chat history is permanently disabled. Log out revokes your session token immediately.</p>
+    </div>
+  </div>
+
+  <!-- Theme -->
+  <div class="overlay" id="themeModal">
+    <div class="modal">
+      <h3>Theme</h3>
+      <div class="theme-grid">
+        <div class="theme-swatch active" data-theme="blush" style="background:linear-gradient(135deg,#3a1528,#ff4d7a);"></div>
+        <div class="theme-swatch" data-theme="midnight" style="background:linear-gradient(135deg,#1a2040,#7aa2ff);"></div>
+        <div class="theme-swatch" data-theme="forest" style="background:linear-gradient(135deg,#1a3324,#6bcb77);"></div>
+        <div class="theme-swatch" data-theme="sand" style="background:linear-gradient(135deg,#3d3224,#e8b86d);"></div>
+        <div class="theme-swatch" data-theme="lavender" style="background:linear-gradient(135deg,#2a1a40,#c9a0ff);"></div>
+      </div>
+      <label style="margin-top:14px;">Upload custom background</label>
+      <input type="file" id="themeFile" accept="image/*" />
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="themeModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Doodle -->
+  <div class="overlay" id="doodleModal">
+    <div class="modal">
+      <h3>Secret doodle board</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
+        <input type="color" id="doodleColor" value="#e91e63" />
+        <input type="range" id="doodleWidth" min="1" max="24" value="3" />
+        <button type="button" class="btn ghost" id="btnDoodlePen">Pen</button>
+        <button type="button" class="btn ghost" id="btnDoodleEraser">Eraser</button>
+        <button type="button" class="btn ghost" id="btnDoodleClear">Clear</button>
+        <button type="button" class="btn" id="btnDoodleSave">Save locally</button>
+      </div>
+      <canvas id="doodleCanvas" width="800" height="360"></canvas>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="doodleModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instagram sync -->
+  <div class="overlay" id="igModal">
+    <div class="modal">
+      <h3>Shared Instagram view</h3>
+      <p class="hint">Paste a Reel or post URL to co-watch in sync. Optionally store an encrypted session note for yourselves (never sent to third parties by this app).</p>
+      <label>Instagram URL (reel / post)</label>
+      <input type="url" id="igUrl" placeholder="https://www.instagram.com/reel/..." />
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnIgSync">Sync to both</button>
+      </div>
+      <div id="igFrameWrap" style="margin-top:12px;">
+        <div id="igPlaceholder">No URL synced yet</div>
+        <iframe id="igFrame" title="Instagram sync" sandbox="allow-scripts allow-same-origin allow-popups allow-forms" referrerpolicy="no-referrer" loading="lazy"></iframe>
+      </div>
+      <label style="margin-top:12px;">Encrypted session note (optional)</label>
+      <textarea id="igSession" rows="3" style="width:100%;padding:10px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid rgba(255,143,171,.3);color:inherit;" placeholder="Paste session cookies / notes — stored encrypted with your room key"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btnIgSaveSession">Save encrypted</button>
+        <button type="button" class="btn ghost" id="btnIgLoadSession">Load</button>
+        <button type="button" class="btn ghost" data-close="igModal">Close</button>
+      </div>
+      <p class="err" id="igSessionStatus" style="color:var(--muted);"></p>
+    </div>
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/js/crypto.js"></script>
+  <script src="/static/js/offline.js"></script>
+  <script src="/static/js/privacy.js"></script>
+  <script src="/static/js/doodle.js"></script>
+  <script src="/static/js/filmtv.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

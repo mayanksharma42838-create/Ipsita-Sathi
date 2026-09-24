@@ -1,0 +1,15 @@
+{
+  "appId": "com.ipsitasathi.app",
+  "appName": "Ipsita-Sathi",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true,
+    "url": "http://10.0.2.2:5000"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1500
+    }
+  }
+}
