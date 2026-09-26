@@ -45,6 +45,10 @@ const FilmTV = (() => {
     }
   }
 
+  function setSocket(sock) {
+    socket = sock;
+  }
+
   function emitControl(action, extra = {}) {
     if (applyingRemote || !socket) return;
     socket.emit("filmtv_control", {

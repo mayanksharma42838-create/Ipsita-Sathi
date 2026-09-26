@@ -64,7 +64,17 @@ def create_room():
             import secrets
             random_salt = secrets.token_bytes(16)
 
-            room = Room(room_id=room_id, salt=random_salt)
+                        room = Room(
+                room_id=room_id,
+                salt=random_salt,
+                filmtv_source_type=None,
+                filmtv_source=None,
+                filmtv_title=None,
+                filmtv_playing=False,
+                filmtv_position=0.0,
+                filmtv_scroll_top=0,
+                theme_opacity=0.92,
+            )
             room.set_password(password)
             db.session.add(room)
             db.session.flush()
