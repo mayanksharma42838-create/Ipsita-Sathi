@@ -60,11 +60,11 @@ def create_room():
                 db.session.rollback()
                 return jsonify({"error": "Unable to create room with that ID"}), 409
 
-            # Generate secure random salt for E2E
+                                    # Generate secure random salt for E2E
             import secrets
             random_salt = secrets.token_bytes(16)
 
-                        room = Room(
+            room = Room(
                 room_id=room_id,
                 salt=random_salt,
                 filmtv_source_type=None,
