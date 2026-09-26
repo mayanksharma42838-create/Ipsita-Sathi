@@ -296,7 +296,7 @@ const App = (() => {
 
   function connectSocket() {
     if (state.socket) state.socket.disconnect();
-    state.socket = io({ auth: { token: state.token } });
+    state.socket = io({ auth: { token: state.token }, path: " /socket.io\ });
     FilmTV.setSocket(state.socket);
 
     state.socket.on("new_message", (msg) => renderMessage(msg));
