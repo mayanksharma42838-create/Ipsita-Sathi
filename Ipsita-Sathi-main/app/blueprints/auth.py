@@ -89,9 +89,10 @@ def create_room():
             )
             db.session.add(member)
             db.session.commit()
-        except Exception as e:
+                except Exception:
+            import traceback
+            traceback.print_exc()
             db.session.rollback()
-            current_app.logger.error(f"Room creation error: {str(e)}")
             return jsonify({"error": "Internal server error during room creation"}), 500
 
     session["member_token"] = token
