@@ -20,7 +20,7 @@ const CryptoClient = (() => {
     return out;
   }
 
-  async function deriveKey(roomId, password) {
+  async function deriveKey(roomId, password, saltParam = null) {
     const material = await crypto.subtle.importKey(
       "raw",
       te.encode(`${roomId}:${password}`),
@@ -28,9 +28,9 @@ const CryptoClient = (() => {
       false,
       ["deriveKey"]
     );
-    const salt = te.encode(`ipsita-sathi-v1:${roomId}`);
+    const salt = saltParam ? saltParam : te.encode(`ipsita-sathi-v1:${roomId}`);
     return crypto.subtle.deriveKey(
-      { name: "PBKDF2", salt, iterations: 210000, hash: "SHA-256" },
+      { name: "PBKDF2", salt, iterations: 390000, hash: "SHA-256" },
       material,
       { name: "AES-GCM", length: 256 },
       false,

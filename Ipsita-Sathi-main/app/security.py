@@ -113,8 +113,14 @@ def _is_private_or_local(host: str) -> bool:
         return True
     if h.endswith(".local") or h.endswith(".internal") or h.endswith(".lan"):
         return True
+    import socket
     try:
-        ip = ipaddress.ip_address(h)
+        try:
+            ip = ipaddress.ip_address(h)
+        except ValueError:
+            # Resolve to IP to prevent DNS rebinding attacks (e.g. nip.io)
+            resolved_ip = socket.gethostbyname(h)
+            ip = ipaddress.ip_address(resolved_ip)
         return bool(
             ip.is_private
             or ip.is_loopback
@@ -123,8 +129,8 @@ def _is_private_or_local(host: str) -> bool:
             or ip.is_multicast
             or ip.is_unspecified
         )
-    except ValueError:
-        # Hostname — block obvious metadata / internal names
+    except (ValueError, socket.gaierror):
+        # Hostname resolution failed or blocked
         if h in ("metadata.google.internal", "metadata"):
             return True
         return False

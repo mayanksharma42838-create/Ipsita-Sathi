@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 
+import eventlet
 from flask import current_app, request
 from flask_socketio import disconnect, emit, join_room, leave_room
 
@@ -44,6 +45,7 @@ def disconnect_member(member_id: int) -> None:
         except Exception:
             pass
         _unbind_sid(sid)
+        eventlet.sleep(0)
 
 
 def _member_from_sid() -> Member | None:
@@ -68,10 +70,10 @@ def _member_from_sid() -> Member | None:
 
 
 def _member_from_sid_auth(auth: dict | None) -> Member | None:
-    if not auth:
+    if not auth or not isinstance(auth, dict):
         return None
     token = auth.get("token")
-    if not token:
+    if not token or not isinstance(token, str):
         return None
     return Member.query.filter_by(session_token=token).first()
 

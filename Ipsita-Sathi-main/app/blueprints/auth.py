@@ -60,7 +60,11 @@ def create_room():
                 db.session.rollback()
                 return jsonify({"error": "Unable to create room with that ID"}), 409
 
-            room = Room(room_id=room_id)
+            # Generate secure random salt for E2E
+            import secrets
+            random_salt = secrets.token_bytes(16)
+
+            room = Room(room_id=room_id, salt=random_salt)
             room.set_password(password)
             db.session.add(room)
             db.session.flush()
@@ -80,6 +84,7 @@ def create_room():
             raise
 
     session["member_token"] = token
+    import base64
     return jsonify(
         {
             "ok": True,
@@ -87,6 +92,7 @@ def create_room():
             "member_id": member.id,
             "display_name": member.display_name,
             "session_token": token,
+            "salt": base64.b64encode(room.salt).decode("utf-8"),
             "slots_left": current_app.config["MAX_ROOM_MEMBERS"] - 1,
         }
     )
@@ -148,6 +154,7 @@ def join_room():
                 from app import sockets as socket_mod
 
                 socket_mod.disconnect_member(existing.id)
+                import base64
                 return jsonify(
                     {
                         "ok": True,
@@ -155,6 +162,7 @@ def join_room():
                         "member_id": existing.id,
                         "display_name": existing.display_name,
                         "session_token": existing.session_token,
+                        "salt": base64.b64encode(room.salt).decode("utf-8"),
                         "slots_left": max(0, max_members - count),
                         "rejoined": True,
                     }
@@ -183,6 +191,7 @@ def join_room():
             raise
 
     session["member_token"] = token
+    import base64
     return jsonify(
         {
             "ok": True,
@@ -190,6 +199,7 @@ def join_room():
             "member_id": member.id,
             "display_name": member.display_name,
             "session_token": token,
+            "salt": base64.b64encode(room.salt).decode("utf-8"),
             "slots_left": max_members - count - 1,
         }
     )
@@ -198,14 +208,14 @@ def join_room():
 def _may_resume_or_reclaim(member: Member, resume_token: str | None, idle_sec: int) -> bool:
     if not member.session_token:
         return True
+    
+    # Secure device-bound resume check
     if resume_token and resume_token == member.session_token:
         return True
-    seen = member.last_seen
-    if seen is not None:
-        if seen.tzinfo is None:
-            seen = seen.replace(tzinfo=timezone.utc)
-        if utcnow() - seen > timedelta(seconds=idle_sec) and not member.is_online:
-            return True
+    
+    # 1-Hour Identity Hijack fix: we no longer allow claiming an identity just because it's idle.
+    # The member MUST supply the correct resume_token (tied to session_token in DB) to rejoin as the same display name.
+    # Otherwise, they must choose a new display name, or wait for the system to purge them entirely if we added that feature.
     return False
 
 

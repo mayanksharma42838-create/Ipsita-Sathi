@@ -134,7 +134,13 @@ const App = (() => {
     state.displayName = data.display_name;
     state.roomId = data.room_id;
     state.password = password;
-    state.key = await CryptoClient.deriveKey(state.roomId, password);
+
+    const saltBase64 = data.salt;
+    let salt = undefined;
+    if (saltBase64) {
+      salt = CryptoClient.b64decode(saltBase64);
+    }
+    state.key = await CryptoClient.deriveKey(state.roomId, password, salt);
 
     OfflineStore.setSession({
       token: state.token,
@@ -321,7 +327,7 @@ const App = (() => {
     state.socket.on("doodle_stroke", (p) => DoodleBoard.applyRemote({ points: p.points, ...p }));
     state.socket.on("doodle_clear", () => DoodleBoard.clear());
     state.socket.on("instagram_sync", (p) => showInstagram(p.url));
-    state.socket.on("doodle_saved", () => {});
+    state.socket.on("doodle_saved", () => { });
     state.socket.on("filmtv_control", (payload) => FilmTV.applyRemoteControl(payload));
     state.socket.on("filmtv_state", (payload) => {
       if (payload && payload.state) FilmTV.loadState(payload.state);
@@ -830,7 +836,12 @@ const App = (() => {
       state.displayName = data.display_name;
       state.roomId = data.room_id;
       state.password = password;
-      state.key = await CryptoClient.deriveKey(state.roomId, password);
+      const saltBase64 = data.salt;
+      let salt = undefined;
+      if (saltBase64) {
+        salt = CryptoClient.b64decode(saltBase64);
+      }
+      state.key = await CryptoClient.deriveKey(state.roomId, password, salt);
       $("#authView").classList.add("hidden");
       $("#chatView").classList.add("active");
       $("#roomLabel").textContent = state.roomId;

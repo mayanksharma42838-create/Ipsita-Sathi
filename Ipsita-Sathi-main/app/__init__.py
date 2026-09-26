@@ -146,15 +146,12 @@ def _ensure_schema_patches() -> None:
 
 
 def _start_expiry_sweeper(app: Flask) -> None:
-    import threading
-    import time
     from pathlib import Path as P
-
     from app.models import Message, utcnow
 
     def loop():
         while True:
-            time.sleep(15)
+            socketio.sleep(15)
             with app.app_context():
                 try:
                     now = utcnow()
@@ -167,11 +164,12 @@ def _start_expiry_sweeper(app: Flask) -> None:
                         continue
                     by_room: dict[str, list[int]] = {}
                     for msg in expired:
+                        socketio.sleep(0.01) # Yield to eventlet greenlet pool
                         msg.deleted = True
                         if msg.media_path:
                             try:
                                 P(msg.media_path).unlink(missing_ok=True)
-                            except OSError:
+                            except (OSError, FileNotFoundError):
                                 pass
                             msg.media_path = None
                         rid = msg.room.room_id if msg.room else None
@@ -183,5 +181,4 @@ def _start_expiry_sweeper(app: Flask) -> None:
                 except Exception:
                     db.session.rollback()
 
-    t = threading.Thread(target=loop, name="expiry-sweeper", daemon=True)
-    t.start()
+    socketio.start_background_task(loop)

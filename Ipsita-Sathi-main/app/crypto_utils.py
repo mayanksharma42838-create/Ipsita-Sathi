@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import os
+import secrets
 
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
@@ -18,7 +19,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 def derive_room_key(room_id: str, password: str, salt: bytes | None = None) -> tuple[bytes, bytes]:
     """Derive a Fernet-compatible key from room_id + password."""
     if salt is None:
-        salt = hashlib.sha256(f"ipsita-sathi:{room_id}".encode()).digest()[:16]
+        salt = secrets.token_bytes(16)
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -54,4 +55,4 @@ def decrypt_bytes(data: bytes, key: bytes) -> bytes | None:
 
 
 def generate_member_token() -> str:
-    return base64.urlsafe_b64encode(os.urandom(32)).decode("utf-8").rstrip("=")
+    return secrets.token_urlsafe(32)
