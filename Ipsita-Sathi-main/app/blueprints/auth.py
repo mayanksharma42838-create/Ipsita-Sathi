@@ -60,7 +60,7 @@ def create_room():
                 db.session.rollback()
                 return jsonify({"error": "Unable to create room with that ID"}), 409
 
-                                    # Generate secure random salt for E2E
+            # Generate secure random salt for E2E
             import secrets
             random_salt = secrets.token_bytes(16)
 
@@ -89,9 +89,10 @@ def create_room():
             )
             db.session.add(member)
             db.session.commit()
-        except Exception:
+        except Exception as e:
             db.session.rollback()
-            raise
+            current_app.logger.error(f"Room creation error: {str(e)}")
+            return jsonify({"error": "Internal server error during room creation"}), 500
 
     session["member_token"] = token
     import base64
