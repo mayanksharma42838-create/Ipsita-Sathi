@@ -268,24 +268,69 @@ def set_theme():
         return limited
 
     data = request.get_json(silent=True) or {}
-    preset = (data.get("theme_preset") or "").strip()
+        preset = (data.get("theme_preset") or "").strip()
     custom_url = (data.get("custom_url") or "").strip()
+    opacity = data.get("opacity")
     allowed = {"blush", "midnight", "forest", "sand", "lavender", "custom"}
-    if preset not in allowed:
+    if preset and preset not in allowed:
         return jsonify({"error": "invalid theme_preset"}), 400
 
-    g.room.theme_preset = preset[:64]
+    if preset:
+        g.room.theme_preset = preset[:64]
     if preset == "custom" and custom_url:
         g.room.theme_path = custom_url[:2048]
+    if opacity is not None:
+        try:
+            g.room.theme_opacity = float(opacity)
+        except (TypeError, ValueError):
+            pass
 
     db.session.commit()
-    url = g.room.theme_path if preset == "custom" and custom_url else "/api/theme/background"
+    url = g.room.theme_path if g.room.theme_preset == "custom" else "/api/theme/background"
     socketio.emit(
         "theme_updated",
-        {"theme_preset": g.room.theme_preset, "theme_url": url},
+        {"theme_preset": g.room.theme_preset, "theme_url": url, "theme_opacity": g.room.theme_opacity},
         room=f"room:{g.room.room_id}",
     )
-    return jsonify({"ok": True, "theme_preset": g.room.theme_preset})
+    return jsonify({"ok": True, "theme_preset": g.room.theme_preset, "theme_opacity": g.room.theme_opacity})
+
+
+@bp.get("/theme/search")
+@login_required
+def search_unsplash():
+    query = request.args.get("query", "").strip()
+    if not query:
+        return jsonify({"results": []})
+    
+    key = os.environ.get("UNSPLASH_API_KEY")
+    if not key:
+        # Fallback to source.unsplash.com if no key is provided
+        results = []
+        import random
+        for _ in range(9):
+            sig = random.randint(1000, 9999)
+            results.append({
+                "id": str(sig),
+                "urls": {
+                    "thumb": f"https://source.unsplash.com/featured/200x200?{query}&sig={sig}",
+                    "regular": f"https://source.unsplash.com/featured/1200x800?{query}&sig={sig}"
+                }
+            })
+        return jsonify({"results": results})
+
+    import requests
+    try:
+        res = requests.get(
+            "https://api.unsplash.com/search/photos",
+            params={"query": query, "per_page": 12},
+            headers={"Authorization": f"Client-ID {key}"},
+            timeout=10
+        )
+        res.raise_for_status()
+        data = res.json()
+        return jsonify({"results": data.get("results", [])})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @bp.post("/theme/upload")

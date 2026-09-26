@@ -185,11 +185,19 @@
       </div>
       <label style="margin-top:14px;">Upload from gallery</label>
       <input type="file" id="themeFile" accept="image/*" />
-      <label style="margin-top:14px;">Or paste image URL</label>
+      <label style="margin-top:14px;">Image Search</label>
       <div style="display:flex;gap:8px;">
-        <input type="url" id="themeUrlInput" placeholder="https://.../wallpaper.jpg" style="flex:1;" />
-        <button type="button" class="btn" id="btnThemeUrl">Set</button>
+        <input type="text" id="themeSearchInput" placeholder="e.g. night sky, forest, sunset" style="flex:1;" />
+        <button type="button" class="btn" id="btnThemeSearch">Search</button>
       </div>
+      <div id="themeSearchResults" class="search-grid"></div>
+
+      <label style="margin-top:14px;">Wallpaper Opacity</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <input type="range" id="themeOpacity" min="0" max="100" value="92" style="flex:1;" />
+        <span id="themeOpacityVal">92%</span>
+      </div>
+
       <p class="err" id="themeError"></p>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-close="themeModal">Close</button>
@@ -259,7 +267,7 @@
     </div>
   </div>
 
-  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script src="/static/js/crypto.js"></script>
   <script src="/static/js/offline.js"></script>
   <script src="/static/js/privacy.js"></script>

@@ -162,6 +162,12 @@ const App = (() => {
     }
     state.key = await CryptoClient.deriveKey(state.roomId, password, salt);
 
+    if (data.theme_opacity !== undefined) {
+      document.documentElement.style.setProperty("--overlay-opacity", data.theme_opacity);
+      $("#themeOpacity").value = Math.round(data.theme_opacity * 100);
+      $("#themeOpacityVal").textContent = Math.round(data.theme_opacity * 100) + "%";
+    }
+
     OfflineStore.setSession({
       token: state.token,
       memberId: state.memberId,
@@ -344,6 +350,13 @@ const App = (() => {
       $("#typing").textContent = p.typing ? `${p.display_name} is typing…` : "";
     });
     state.socket.on("theme_updated", (t) => {
+      if (t.theme_opacity !== undefined) {
+        document.documentElement.style.setProperty("--overlay-opacity", t.theme_opacity);
+        if ($("#themeOpacity")) {
+          $("#themeOpacity").value = Math.round(t.theme_opacity * 100);
+          $("#themeOpacityVal").textContent = Math.round(t.theme_opacity * 100) + "%";
+        }
+      }
       if (t.theme_preset === "custom") applyCustomTheme(t.theme_url);
       else applyTheme(t.theme_preset);
     });
@@ -648,8 +661,7 @@ const App = (() => {
     }
   }
 
-  async function setThemeUrl() {
-    const url = $("#themeUrlInput").value.trim();
+  async function setThemeUrl(url) {
     if (!url) return;
     $("#themeError").textContent = "";
     try {
@@ -658,9 +670,33 @@ const App = (() => {
         body: JSON.stringify({ theme_preset: "custom", custom_url: url }),
       });
       await applyCustomTheme(url);
-      $("#themeUrlInput").value = "";
     } catch (e) {
       $("#themeError").textContent = e.message;
+    }
+  }
+
+  async function searchTheme() {
+    const query = $("#themeSearchInput").value.trim();
+    if (!query) return;
+    const grid = $("#themeSearchResults");
+    grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;">Searching...</p>';
+    try {
+      // Using Unsplash Source for direct random query results
+      const results = [];
+      for (let i = 0; i < 9; i++) {
+        const id = Math.random().toString(36).substring(7);
+        results.push(`https://source.unsplash.com/featured/400x400?${query}&sig=${id}`);
+      }
+      grid.innerHTML = "";
+      results.forEach(url => {
+        const item = document.createElement("div");
+        item.className = "search-item";
+        item.style.backgroundImage = `url(${url})`;
+        item.addEventListener("click", () => setThemeUrl(url));
+        grid.appendChild(item);
+      });
+    } catch (e) {
+      grid.innerHTML = `<p class="err">${e.message}</p>`;
     }
   }
 
@@ -755,6 +791,7 @@ const App = (() => {
   }
 
   function bindUI() {
+    // Persistent room info: don't overwrite if user is trying to join an existing room
     $("#createRoomId").value = genRoomId();
     $("#createRoomId").addEventListener("input", validateCreate);
     $("#createPassword").addEventListener("input", validateCreate);
@@ -856,9 +893,15 @@ const App = (() => {
       if (f) await uploadTheme(f).catch((err) => alert(err.message));
     });
 
-    $("#btnThemeUrl").addEventListener("click", () => setThemeUrl());
-    $("#themeUrlInput").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") setThemeUrl();
+    $("#btnThemeSearch").addEventListener("click", () => searchTheme());
+    $("#themeSearchInput").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") searchTheme();
+    });
+
+    $("#themeOpacity").addEventListener("input", (e) => {
+      const val = e.target.value;
+      $("#themeOpacityVal").textContent = val + "%";
+      document.documentElement.style.setProperty("--overlay-opacity", val / 100);
     });
 
     $("#btnIgSync").addEventListener("click", () => syncInstagram().catch((e) => alert(e.message)));
@@ -927,6 +970,15 @@ const App = (() => {
         salt = CryptoClient.b64decode(saltBase64);
       }
       state.key = await CryptoClient.deriveKey(state.roomId, password, salt);
+
+      if (data.theme_opacity !== undefined) {
+        document.documentElement.style.setProperty("--overlay-opacity", data.theme_opacity);
+        if ($("#themeOpacity")) {
+          $("#themeOpacity").value = Math.round(data.theme_opacity * 100);
+          $("#themeOpacityVal").textContent = Math.round(data.theme_opacity * 100) + "%";
+        }
+      }
+
       $("#authView").classList.add("hidden");
       $("#chatView").classList.add("active");
       $("#roomLabel").textContent = state.roomId;

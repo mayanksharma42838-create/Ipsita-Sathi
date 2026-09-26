@@ -21,6 +21,7 @@ class Room(db.Model):
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     theme_path = db.Column(db.String(512), nullable=True)
     theme_preset = db.Column(db.String(64), default="blush", nullable=False)
+    theme_opacity = db.Column(db.Float, default=0.92, nullable=False)
     instagram_session_enc = db.Column(db.Text, nullable=True)
     instagram_sync_url = db.Column(db.String(1024), nullable=True)
     doodle_path = db.Column(db.String(512), nullable=True)
