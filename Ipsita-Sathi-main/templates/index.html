@@ -282,7 +282,13 @@
     </div>
   </div>
 
+  <!-- Socket.IO Client with Fallback -->
   <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    if (typeof io === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"><\/script>');
+    }
+  </script>
   <script src="/static/js/crypto.js"></script>
   <script src="/static/js/offline.js"></script>
   <script src="/static/js/privacy.js"></script>

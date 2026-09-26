@@ -10,23 +10,30 @@ from app.models import Member, Room, utcnow
 
 def get_member_from_request() -> Member | None:
     """Authenticate via header or Flask session cookie — never query-string tokens."""
-    # Explicitly ignore ?token= / request.args (V-04)
-    token = (
-        request.headers.get("X-Session-Token")
-        or _bearer_token()
-        or session.get("member_token")
-    )
-    if not token:
+    try:
+        # Explicitly ignore ?token= / request.args (V-04)
+        token = (
+            request.headers.get("X-Session-Token")
+            or _bearer_token()
+            or session.get("member_token")
+        )
+        if not token:
+            return None
+        
+        member = Member.query.filter_by(session_token=token).first()
+        if not member or not member.session_token:
+            return None
+
+        # Keep cookie in sync so <video src> / CSS url() can auth without ?token=
+        if session.get("member_token") != token:
+            session["member_token"] = token
+
+        member.last_seen = utcnow()
+        db.session.commit()
+        return member
+    except Exception:
+        db.session.rollback()
         return None
-    member = Member.query.filter_by(session_token=token).first()
-    if not member or not member.session_token:
-        return None
-    # Keep cookie in sync so <video src> / CSS url() can auth without ?token=
-    if session.get("member_token") != token:
-        session["member_token"] = token
-    member.last_seen = utcnow()
-    db.session.commit()
-    return member
 
 
 def _bearer_token() -> str | None:
@@ -50,4 +57,7 @@ def login_required(fn):
 
 
 def room_member_count(room: Room) -> int:
-    return Member.query.filter_by(room_pk=room.id).count()
+    try:
+        return Member.query.filter_by(room_pk=room.id).count()
+    except Exception:
+        return 0
