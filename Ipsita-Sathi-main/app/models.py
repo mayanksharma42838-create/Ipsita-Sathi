@@ -77,7 +77,7 @@ class Member(db.Model):
     last_seen = db.Column(db.DateTime, default=utcnow, nullable=False)
     is_online = db.Column(db.Boolean, default=False, nullable=False)
 
-    room = db.relationship("Room", back_populates="members")
+    room = db.relationship("Room", back_populates="members", foreign_keys=[room_pk])
 
     __table_args__ = (
         db.UniqueConstraint("room_pk", "display_name", name="uq_room_display_name"),

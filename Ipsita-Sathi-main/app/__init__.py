@@ -27,7 +27,7 @@ def create_app(config_class=Config):
     socketio.init_app(
         app,
         cors_allowed_origins=origins,
-        async_mode="threading",
+        async_mode="eventlet",
         logger=False,
         engineio_logger=False,
     )
@@ -164,7 +164,7 @@ def _start_expiry_sweeper(app: Flask) -> None:
                         continue
                     by_room: dict[str, list[int]] = {}
                     for msg in expired:
-                        socketio.sleep(0.01) # Yield to eventlet greenlet pool
+                        socketio.sleep(0.01)  # Yield to eventlet greenlet pool
                         msg.deleted = True
                         if msg.media_path:
                             try:
