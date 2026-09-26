@@ -23,8 +23,7 @@ const App = (() => {
     recording: false,
   };
 
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => [...document.querySelectorAll(sel)];
+  const $ = (sel) => document.querySelector(sel); const $$ = (sel) => [...document.querySelectorAll(sel)];
 
   function headers(json = true) {
     const h = { "X-Session-Token": state.token };
@@ -72,7 +71,6 @@ const App = (() => {
     const roomId = $("#joinRoomId").value.trim();
     const password = $("#joinPassword").value;
     const displayName = $("#joinName").value.trim() || "Partner 2";
-    // V-01: only this device's stored token may reclaim a live seat
     const saved = OfflineStore.getSession();
     const resumeToken =
       saved && saved.token && saved.roomId === roomId && saved.displayName === displayName
@@ -147,7 +145,6 @@ const App = (() => {
       memberId: state.memberId,
       displayName: state.displayName,
       roomId: state.roomId,
-      // password kept only in-memory for E2E; never persist password
     });
 
     $("#authView").classList.add("hidden");
@@ -209,7 +206,6 @@ const App = (() => {
       setFilmTVError("Paste a direct .mp4 / .webm link.");
       return;
     }
-    // Client-side native-only gate (server still enforces)
     try {
       const u = new URL(url);
       if (u.protocol !== "https:") {
@@ -296,7 +292,8 @@ const App = (() => {
 
   function connectSocket() {
     if (state.socket) state.socket.disconnect();
-    state.socket = io({ auth: { token: state.token }, path: " /socket.io\ });
+    // Fixed clean dynamic initialization for production & local
+    state.socket = io({ auth: { token: state.token } });
     FilmTV.setSocket(state.socket);
 
     state.socket.on("new_message", (msg) => renderMessage(msg));
@@ -561,7 +558,6 @@ const App = (() => {
   }
 
   async function applyCustomTheme() {
-    // Same-origin cookie / session — never ?token= in CSS urls (V-04)
     document.documentElement.style.setProperty(
       "--theme-image",
       "url(/api/theme/background)"
@@ -613,7 +609,6 @@ const App = (() => {
       ph.style.display = "flex";
       return;
     }
-    // Only allow Instagram permalinks → embed path (V-17)
     let embed = null;
     try {
       const u = new URL(url);
@@ -680,7 +675,8 @@ const App = (() => {
   function bindUI() {
     $$(".tabs button").forEach((btn) => {
       btn.addEventListener("click", () => {
-        $$(".tabs button").forEach((b) => b.classList.remove("active"));
+        $$
+          (".tabs button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         const tab = btn.dataset.tab;
         $("#createForm").style.display = tab === "create" ? "block" : "none";
@@ -752,9 +748,7 @@ const App = (() => {
       const f = e.target.files && e.target.files[0];
       if (f) uploadFilmTV(f);
     });
-    $("#btnFilmTVClear").addEventListener("click", () => clearFilmTV());
-
-    $$("[data-close]").forEach((b) =>
+    $("#btnFilmTVClear").addEventListener("click", () => clearFilmTV()); $$("[data-close]").forEach((b) =>
       b.addEventListener("click", () => closeModal(b.dataset.close))
     );
 
@@ -763,10 +757,7 @@ const App = (() => {
     );
     const onLogout = () => logout().catch((e) => alert(e.message || "Logout failed"));
     $("#btnLogout").addEventListener("click", onLogout);
-    const logoutTop = $("#btnLogoutTop");
-    if (logoutTop) logoutTop.addEventListener("click", onLogout);
-
-    $$(".theme-swatch").forEach((el) => {
+    const logoutTop = $("#btnLogoutTop"); if (logoutTop) logoutTop.addEventListener("click", onLogout); $$(".theme-swatch").forEach((el) => {
       el.addEventListener("click", () => saveTheme(el.dataset.theme).catch((e) => alert(e.message)));
     });
     $("#themeFile").addEventListener("change", async (e) => {
@@ -807,7 +798,6 @@ const App = (() => {
     });
     window.addEventListener("offline", () => $("#offlineBanner").classList.add("show"));
 
-    // Block export UI forever
     document.addEventListener("click", (e) => {
       if (e.target.closest("[data-export]")) {
         e.preventDefault();
@@ -828,7 +818,6 @@ const App = (() => {
         return;
       }
       const data = await res.json();
-      // Password required to unlock E2E key — prompt once
       const password = prompt("Enter room password to unlock encrypted messages:");
       if (!password) return;
       state.token = data.session_token;
