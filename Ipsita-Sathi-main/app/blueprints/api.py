@@ -352,31 +352,41 @@ def upload_theme():
     if limited:
         return limited
 
-    if "file" not in request.files:
-        return jsonify({"error": "file required"}), 400
-    f = request.files["file"]
+    f = request.files.get("file")
+    if not f:
+        return jsonify({"error": "No file uploaded"}), 400
+
     original = secure_filename(f.filename or "theme.jpg")
     ext = Path(original).suffix.lower()
     if ext not in current_app.config["ALLOWED_IMAGE_EXT"]:
-        return jsonify({"error": "images only"}), 400
+        return jsonify({"error": f"File type not allowed: {ext}"}), 400
 
     header = read_upload_header(f, 32)
     sniffed = sniff_image_ext(header)
     if not sniffed:
-        return jsonify({"error": "file content is not a valid image"}), 400
-    ext = sniffed if sniffed != ".jpg" or ext not in {".jpg", ".jpeg"} else ext
+        return jsonify({"error": "File content is not a valid image"}), 400
+
+    # Ensure extension matches sniffed content for consistency
+    if sniffed == ".jpg" and ext not in {".jpg", ".jpeg"}:
+        ext = ".jpg"
+    elif sniffed != ext:
+        ext = sniffed
 
     f.seek(0, os.SEEK_END)
     size = f.tell()
     f.seek(0)
     if size <= 0 or size > current_app.config["THEME_MAX_BYTES"]:
-        return jsonify({"error": "theme image too large"}), 400
+        return jsonify({"error": "Theme image too large (max 8MB)"}), 400
 
     filename = f"theme_{g.room.room_id}_{uuid.uuid4().hex}{ext}"
     dest = Path(current_app.config["THEMES_DIR"]) / filename
-    f.save(dest)
+    try:
+        f.save(dest)
+    except Exception as e:
+        return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
 
-    if g.room.theme_path:
+    # Clean up old theme if it was a custom upload
+    if g.room.theme_path and os.path.exists(g.room.theme_path) and "theme_" in g.room.theme_path:
         try:
             Path(g.room.theme_path).unlink(missing_ok=True)
         except OSError:
@@ -389,10 +399,21 @@ def upload_theme():
     url = "/api/theme/background"
     socketio.emit(
         "theme_updated",
-        {"theme_preset": "custom", "theme_url": url},
+        {
+            "theme_preset": "custom",
+            "theme_url": url,
+            "theme_opacity": getattr(g.room, "theme_opacity", 0.92),
+        },
         room=f"room:{g.room.room_id}",
     )
-    return jsonify({"ok": True, "theme_url": url, "theme_preset": "custom"})
+    return jsonify(
+        {
+            "ok": True,
+            "theme_url": url,
+            "theme_preset": "custom",
+            "theme_opacity": getattr(g.room, "theme_opacity", 0.92),
+        }
+    )
 
 
 @bp.get("/theme/background")
