@@ -80,5 +80,5 @@ const CryptoClient = (() => {
     return crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct);
   }
 
-  return { deriveKey, encryptText, decryptText, encryptBlob, decryptBlob, b64encode };
+  return { deriveKey, encryptText, decryptText, encryptBlob, decryptBlob, b64encode, b64decode };
 })();

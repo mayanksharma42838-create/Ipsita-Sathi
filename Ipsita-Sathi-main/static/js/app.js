@@ -45,7 +45,29 @@ const App = (() => {
     $("#authError").textContent = msg || "";
   }
 
+  function genRoomId() {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let res = "room-";
+    for (let i = 0; i < 8; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
+    return res;
+  }
+
+  function validateCreate() {
+    const id = $("#createRoomId").value.trim();
+    const pw = $("#createPassword").value;
+    const name = $("#createName").value.trim();
+    let err = "";
+    if (!id) err = "Room ID is required";
+    else if (id.length < 4) err = "Room ID too short";
+    else if (!pw) err = "Password is required";
+    else if (pw.length < 12) err = "Password must be at least 12 characters";
+    else if (!name) err = "Display name is required";
+    showAuthError(err);
+    return !err;
+  }
+
   async function createRoom() {
+    if (!validateCreate()) return;
     showAuthError("");
     const roomId = $("#createRoomId").value.trim();
     const password = $("#createPassword").value;
@@ -673,6 +695,11 @@ const App = (() => {
   }
 
   function bindUI() {
+    $("#createRoomId").value = genRoomId();
+    $("#createRoomId").addEventListener("input", validateCreate);
+    $("#createPassword").addEventListener("input", validateCreate);
+    $("#createName").addEventListener("input", validateCreate);
+
     $$(".tabs button").forEach((btn) => {
       btn.addEventListener("click", () => {
         $$
