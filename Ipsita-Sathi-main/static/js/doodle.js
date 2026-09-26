@@ -8,7 +8,7 @@ const DoodleBoard = (() => {
 
   function init(canvasEl, onStroke) {
     canvas = canvasEl;
-    ctx = canvas.getContext("2d");
+    ctx = canvas.getContext("2d", { willReadFrequently: true });
     emitStroke = onStroke;
     resize();
     window.addEventListener("resize", resize);
