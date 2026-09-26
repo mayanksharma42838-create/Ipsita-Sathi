@@ -1,142 +1,118 @@
 /**
- * FilmTV Watch Party — HTML5 <video> only.
- * Play / pause / seek synced via Flask-SocketIO. No YouTube, no screen share.
+ * Shared interactive workspace / iframe viewer.
+ * Allows users to share URLs for viewing docs, websites, and synced media.
  */
 const FilmTV = (() => {
+  let containerEl = null;
+  let iframeEl = null;
   let videoEl = null;
   let socket = null;
   let getToken = () => null;
+  let currentUrl = null;
   let applyingRemote = false;
-  let heartbeatTimer = null;
-  let lastEmittedSeek = 0;
-  let hasSource = false;
+  let isHost = false;
 
-  function init({ video, socket: sock, tokenFn }) {
-    videoEl = video;
+  function init({ container, socket: sock, tokenFn }) {
+    containerEl = container;
     socket = sock;
     getToken = tokenFn;
 
-    videoEl.addEventListener("play", () => emitControl("play"));
-    videoEl.addEventListener("pause", () => emitControl("pause"));
-    videoEl.addEventListener("seeked", () => {
-      if (applyingRemote) return;
-      const now = Date.now();
-      if (now - lastEmittedSeek < 350) return;
-      lastEmittedSeek = now;
-      emitControl("seek");
-    });
+    if (!videoEl) {
+      videoEl = document.getElementById("filmtvVideo");
+      videoEl.addEventListener("play", () => { if (!applyingRemote) emitControl("play"); });
+      videoEl.addEventListener("pause", () => { if (!applyingRemote) emitControl("pause"); });
+      videoEl.addEventListener("seeked", () => { if (!applyingRemote) emitControl("seek"); });
+    }
 
-    if (heartbeatTimer) clearInterval(heartbeatTimer);
-    heartbeatTimer = setInterval(() => {
-      if (applyingRemote || !hasSource || !videoEl || videoEl.paused) return;
-      emitControl("heartbeat");
-    }, 8000);
+    if (!iframeEl) {
+      iframeEl = document.createElement("iframe");
+      iframeEl.className = "filmtv-iframe";
+      iframeEl.style.width = "100%";
+      iframeEl.style.height = "100%";
+      iframeEl.style.border = "none";
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
+
+      iframeEl.onload = () => {
+        try {
+          const doc = iframeEl.contentWindow.document;
+          doc.addEventListener("scroll", () => {
+            if (!applyingRemote) emitControl("scroll", { scroll_top: doc.documentElement.scrollTop });
+          });
+        } catch (e) { /* Cross-origin blocks scroll sync */ }
+      };
+
+      containerEl.appendChild(iframeEl);
+    }
   }
 
-  function setSocket(sock) {
-    socket = sock;
-  }
-
-  function emitControl(action) {
-    if (applyingRemote || !socket || !hasSource) return;
+  function emitControl(action, extra = {}) {
+    if (applyingRemote || !socket) return;
     socket.emit("filmtv_control", {
       token: getToken(),
       action,
       position: videoEl ? videoEl.currentTime || 0 : 0,
+      ...extra
     });
-    updateStatusBadge(action);
   }
 
-  function updateStatusBadge(action) {
-    const el = document.getElementById("filmtvSyncBadge");
-    if (!el) return;
-    const labels = {
-      play: "▶ playing together",
-      pause: "❚❚ paused together",
-      seek: "⟷ seek synced",
-      heartbeat: "♡ in sync",
-      load: "loaded for both",
-      clear: "cleared",
-    };
-    el.textContent = labels[action] || "♡ synced";
-    el.classList.add("pulse");
-    setTimeout(() => el.classList.remove("pulse"), 700);
-  }
-
-  function resolveSrc(state) {
-    if (!state || !state.source_type) return null;
-    if (state.source_type === "upload") {
-      // Cookie / header auth only — never put session tokens in the URL (V-04)
-      return "/api/filmtv/stream";
-    }
-    if (state.source_type === "url") {
-      return state.stream_url || state.source;
-    }
-    return null;
-  }
-
-  async function loadState(state) {
-    if (!state || !state.source_type || !state.source) {
+  async function loadState(state, memberId) {
+    if (!state || !state.source) {
       clearPlayer();
       return;
     }
-    // Reject legacy youtube leftovers from older sessions
-    if (state.source_type === "youtube") {
-      clearPlayer();
-      const title = document.getElementById("filmtvTitle");
-      if (title) title.textContent = "Use a direct mp4/webm URL or upload a file";
-      return;
-    }
 
+    isHost = state.host_id === memberId;
     const titleEl = document.getElementById("filmtvTitle");
-    if (titleEl) titleEl.textContent = state.title || "FilmTV Watch Party";
+    if (titleEl) titleEl.textContent = state.title || "Shared Workspace";
 
-    const src = resolveSrc(state);
-    if (!src || !videoEl) return;
-
-    applyingRemote = true;
-    hasSource = true;
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
 
-    if (videoEl.getAttribute("src") !== src) {
-      videoEl.src = src;
-      videoEl.load();
-      await waitEvent(videoEl, "loadedmetadata").catch(() => {});
-    }
+    const isVideo = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i.test(state.source) || state.source_type === "upload";
 
-    const target = Number(state.position) || 0;
-    if (Math.abs((videoEl.currentTime || 0) - target) > 0.4) {
-      try {
-        videoEl.currentTime = target;
-      } catch {
-        /* ignore */
-      }
-    }
+    if (isVideo) {
+      if (iframeEl) iframeEl.style.display = "none";
+      if (videoEl) {
+        videoEl.style.display = "block";
+        const src = state.source_type === "upload" ? "/api/filmtv/stream" : state.source;
+        if (videoEl.src !== src) {
+          videoEl.src = src;
+          videoEl.load();
+        }
 
-    if (state.playing) {
-      try {
-        await videoEl.play();
-      } catch {
-        /* autoplay may require a tap */
+        applyingRemote = true;
+        if (Math.abs(videoEl.currentTime - state.position) > 1.5) {
+          videoEl.currentTime = state.position;
+        }
+        if (state.playing) videoEl.play().catch(() => { });
+        else videoEl.pause();
+        applyingRemote = false;
       }
     } else {
-      videoEl.pause();
+      if (videoEl) videoEl.style.display = "none";
+      if (iframeEl) {
+        iframeEl.style.display = "block";
+        if (iframeEl.src !== state.source) iframeEl.src = state.source;
+
+        applyingRemote = true;
+        try {
+          iframeEl.contentWindow.scrollTo(0, state.scroll_top);
+        } catch (e) { }
+        applyingRemote = false;
+      }
     }
 
-    applyingRemote = false;
-    updateStatusBadge("load");
+    // Only host sees controls
+    if (videoEl) videoEl.controls = isHost;
   }
 
   function clearPlayer() {
-    hasSource = false;
-    if (videoEl) {
-      videoEl.pause();
-      videoEl.removeAttribute("src");
-      videoEl.load();
-    }
+    currentUrl = null;
+    if (iframeEl) iframeEl.removeAttribute("src");
+    const container = document.getElementById("filmtvIframeContainer");
+    if (container) container.style.display = "none";
     const title = document.getElementById("filmtvTitle");
-    if (title) title.textContent = "FilmTV Watch Party";
+    if (title) title.textContent = "Shared Workspace";
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "flex";
     updateStatusBadge("clear");
@@ -145,59 +121,11 @@ const FilmTV = (() => {
   async function applyRemoteControl(payload) {
     if (!payload || !payload.state) return;
     const { action, state } = payload;
-
-    if (action === "load" || !hasSource) {
+    if (action === "load" || action === "sync") {
       await loadState(state);
-      return;
+    } else if (action === "clear") {
+      clearPlayer();
     }
-
-    applyingRemote = true;
-    try {
-      await syncPlayback(state);
-      updateStatusBadge(action);
-    } finally {
-      setTimeout(() => {
-        applyingRemote = false;
-      }, 250);
-    }
-  }
-
-  async function syncPlayback(state) {
-    if (!videoEl || !hasSource) return;
-    const target = Number(state.position) || 0;
-    const driftTol = 1.1;
-
-    if (Math.abs((videoEl.currentTime || 0) - target) > driftTol) {
-      try {
-        videoEl.currentTime = target;
-      } catch {
-        /* ignore */
-      }
-    }
-
-    if (state.playing && videoEl.paused) {
-      try {
-        await videoEl.play();
-      } catch {
-        /* ignore */
-      }
-    } else if (!state.playing && !videoEl.paused) {
-      videoEl.pause();
-    }
-  }
-
-  function waitEvent(el, name, ms = 10000) {
-    return new Promise((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("timeout")), ms);
-      el.addEventListener(
-        name,
-        () => {
-          clearTimeout(t);
-          resolve();
-        },
-        { once: true }
-      );
-    });
   }
 
   function openStage() {

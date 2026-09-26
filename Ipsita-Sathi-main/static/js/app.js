@@ -181,20 +181,21 @@ const App = (() => {
     $("#meLabel").textContent = state.displayName;
 
     initFilmTV();
+    initZoom();
     connectSocket();
     await loadMessages();
     await loadGallery();
     await flushOutbox();
     applyTheme("blush");
-    if (data.filmtv) await FilmTV.loadState(data.filmtv);
+    if (data.filmtv) await FilmTV.loadState(data.filmtv, state.memberId);
     else await refreshFilmTVState();
   }
 
   function initFilmTV() {
-    const video = $("#filmtvVideo");
-    if (!video || !window.FilmTV) return;
+    const container = $("#filmtvIframeContainer");
+    if (!container || !window.FilmTV) return;
     FilmTV.init({
-      video,
+      container,
       socket: state.socket,
       tokenFn: () => state.token,
     });
@@ -366,11 +367,60 @@ const App = (() => {
     state.socket.on("doodle_saved", () => { });
     state.socket.on("filmtv_control", (payload) => FilmTV.applyRemoteControl(payload));
     state.socket.on("filmtv_state", (payload) => {
-      if (payload && payload.state) FilmTV.loadState(payload.state);
+      if (payload && payload.state) FilmTV.loadState(payload.state, state.memberId);
     });
     state.socket.on("connect", () => {
       state.socket.emit("filmtv_request_sync", { token: state.token });
     });
+  }
+
+  let zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
+
+  function initZoom() {
+    const img = $("#zoomImage");
+    const viewport = $(".zoom-viewport");
+
+    const apply = () => {
+      img.style.transform = `translate(${zoomState.x}px, ${zoomState.y}px) scale(${zoomState.scale})`;
+    };
+
+    $("#btnZoomIn").addEventListener("click", () => { zoomState.scale *= 1.2; apply(); });
+    $("#btnZoomOut").addEventListener("click", () => { zoomState.scale /= 1.2; apply(); });
+    $("#btnZoomReset").addEventListener("click", () => {
+      zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
+      apply();
+    });
+
+    viewport.addEventListener("mousedown", (e) => {
+      zoomState.dragging = true;
+      zoomState.lastX = e.clientX - zoomState.x;
+      zoomState.lastY = e.clientY - zoomState.y;
+    });
+
+    window.addEventListener("mousemove", (e) => {
+      if (!zoomState.dragging) return;
+      zoomState.x = e.clientX - zoomState.lastX;
+      zoomState.y = e.clientY - zoomState.lastY;
+      apply();
+    });
+
+    window.addEventListener("mouseup", () => { zoomState.dragging = false; });
+
+    // Simple pinch-to-zoom simulation with wheel
+    viewport.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? 0.9 : 1.1;
+      zoomState.scale *= delta;
+      apply();
+    }, { passive: false });
+  }
+
+  function openZoom(src) {
+    const img = $("#zoomImage");
+    img.src = src;
+    zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
+    img.style.transform = `none`;
+    openModal("mediaZoomModal");
   }
 
   async function loadGallery() {
@@ -388,7 +438,10 @@ const App = (() => {
         item.className = "gallery-item";
         if (m.msg_type === "image") {
           const img = await fetchDecryptedMedia(m);
-          if (img) item.appendChild(img);
+          if (img) {
+            item.appendChild(img);
+            item.addEventListener("click", () => openZoom(img.src));
+          }
         } else if (m.msg_type === "voice") {
           const audio = await fetchDecryptedAudio(m);
           if (audio) {
@@ -984,12 +1037,13 @@ const App = (() => {
       $("#roomLabel").textContent = state.roomId;
       $("#meLabel").textContent = state.displayName;
       initFilmTV();
+      initZoom();
       connectSocket();
       await loadMessages();
       await loadGallery();
       try {
         const me = await api("/api/auth/me");
-        if (me.filmtv) await FilmTV.loadState(me.filmtv);
+        if (me.filmtv) await FilmTV.loadState(me.filmtv, state.memberId);
       } catch {
         /* optional */
       }
@@ -1002,6 +1056,7 @@ const App = (() => {
     PrivacyGuard.init();
     bindUI();
     initFilmTV();
+    initZoom();
     tryRestore();
   }
 

@@ -231,11 +231,18 @@ def on_filmtv_control(data):
         return
     room = member.room
     action = (data or {}).get("action")
-    position = (data or {}).get("position")
+    position = (data.get("position"))
+    scroll_top = (data.get("scroll_top"))
+
+    # Only the host (uploader/initiator) can control playback/scrolling
+    if room.filmtv_host_id and room.filmtv_host_id != member.id:
+        return
 
     try:
         if position is not None:
             room.filmtv_position = max(0.0, float(position))
+        if scroll_top is not None:
+            room.filmtv_scroll_top = int(scroll_top)
     except (TypeError, ValueError):
         pass
 
@@ -243,7 +250,7 @@ def on_filmtv_control(data):
         room.filmtv_playing = True
     elif action == "pause":
         room.filmtv_playing = False
-    elif action in ("seek", "heartbeat"):
+    elif action in ("seek", "heartbeat", "scroll"):
         pass
     else:
         return

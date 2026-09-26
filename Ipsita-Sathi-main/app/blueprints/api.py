@@ -561,27 +561,28 @@ def filmtv_state():
 @bp.post("/filmtv/load")
 @login_required
 def filmtv_load():
-    """Load a shared HTTPS direct video URL (no private/loopback hosts)."""
+    """Load a shared URL (video, doc, or app) into the workspace."""
     limited = rate_or_429("filmtv_load", *current_app.config["RL_FILMTV"])
     if limited:
         return limited
 
     data = request.get_json(silent=True) or {}
     url = (data.get("url") or "").strip()[:2048]
-    title = (data.get("title") or "").strip()[:256] or "Watch Party"
+    title = (data.get("title") or "").strip()[:256] or "Shared Workspace"
 
     if not url:
         return jsonify({"error": "url required"}), 400
 
-    err = validate_direct_video_url(url, current_app.config["ALLOWED_VIDEO_EXT"])
-    if err:
-        return jsonify({"error": err}), 400
+    # Relaxed validation for general workspace support
+    if not url.startswith("https://"):
+        return jsonify({"error": "Only HTTPS URLs are allowed for security"}), 400
 
-    g.room.filmtv_source_type = "url"
+        g.room.filmtv_source_type = "url"
     g.room.filmtv_source = url
     g.room.filmtv_title = title
     g.room.filmtv_playing = False
     g.room.filmtv_position = 0.0
+    g.room.filmtv_host_id = g.member.id
     g.room.filmtv_updated_at = utcnow()
     db.session.commit()
 
@@ -630,11 +631,12 @@ def filmtv_upload():
     dest = Path(current_app.config["FILMTV_DIR"]) / filename
     f.save(dest)
 
-    g.room.filmtv_source_type = "upload"
+        g.room.filmtv_source_type = "upload"
     g.room.filmtv_source = str(dest)
     g.room.filmtv_title = (request.form.get("title") or original)[:256]
     g.room.filmtv_playing = False
     g.room.filmtv_position = 0.0
+    g.room.filmtv_host_id = g.member.id
     g.room.filmtv_updated_at = utcnow()
     db.session.commit()
 

@@ -30,10 +30,12 @@ class Room(db.Model):
     filmtv_source = db.Column(db.String(2048), nullable=True)
     filmtv_title = db.Column(db.String(256), nullable=True)
     filmtv_playing = db.Column(db.Boolean, default=False, nullable=False)
-    filmtv_position = db.Column(db.Float, default=0.0, nullable=False)
+        filmtv_position = db.Column(db.Float, default=0.0, nullable=False)
     filmtv_updated_at = db.Column(db.DateTime, nullable=True)
+    filmtv_host_id = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=True)
+    filmtv_scroll_top = db.Column(db.Integer, default=0, nullable=False)
 
-    members = db.relationship("Member", back_populates="room", cascade="all, delete-orphan")
+    members = db.relationship("Member", back_populates="room", cascade="all, delete-orphan", foreign_keys="Member.room_pk")
     messages = db.relationship("Message", back_populates="room", cascade="all, delete-orphan")
 
     def set_password(self, password: str) -> None:

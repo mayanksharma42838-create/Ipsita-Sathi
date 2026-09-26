@@ -94,20 +94,21 @@
           </header>
 
           <div class="filmtv-player-wrap">
-            <video id="filmtvVideo" playsinline controls controlslist="nodownload"></video>
+            <video id="filmtvVideo" playsinline controls controlslist="nodownload" style="display:none;"></video>
             <div id="filmtvEmpty" class="filmtv-empty">
               <span class="heart-mark" aria-hidden="true">♡</span>
-              <p>Upload an MP4/WebM or paste a direct video link.</p>
-              <p class="hint">Native streaming only — no YouTube, no third-party players.</p>
+              <p>Share a link to co-browse, watch, or work together.</p>
+              <p class="hint">Supports YouTube, Docs, and web apps via interactive iframe.</p>
             </div>
+            <div id="filmtvIframeContainer" style="width:100%;height:100%;display:none;"></div>
           </div>
 
           <div class="filmtv-dock">
             <div class="filmtv-dock-row">
-              <label for="filmtvUrl">Direct video URL</label>
+              <label for="filmtvUrl">Shared Link (Video, Doc, App)</label>
               <div class="filmtv-url-row">
-                <input type="url" id="filmtvUrl" placeholder="https://…/movie.mp4" />
-                <button type="button" class="btn" id="btnFilmTVLoad">Load</button>
+                <input type="url" id="filmtvUrl" placeholder="https://youtube.com/... or https://..." />
+                <button type="button" class="btn" id="btnFilmTVLoad">Share</button>
               </div>
             </div>
             <div class="filmtv-dock-row filmtv-dock-actions">
@@ -263,6 +264,20 @@
       </div>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-close="galleryModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mediaZoomModal" class="overlay">
+    <div class="modal modal-lg zoom-modal">
+      <div class="zoom-controls">
+        <button type="button" class="btn sm ghost" id="btnZoomIn">+</button>
+        <button type="button" class="btn sm ghost" id="btnZoomOut">-</button>
+        <button type="button" class="btn sm ghost" id="btnZoomReset">Reset</button>
+        <button type="button" class="btn sm ghost" data-close="mediaZoomModal">Close</button>
+      </div>
+      <div class="zoom-viewport">
+        <img id="zoomImage" src="" alt="Zoomed view" />
       </div>
     </div>
   </div>
