@@ -57,7 +57,7 @@ def create_app(config_class=Config):
             "script-src 'self' https://cdn.socket.io; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
-            "img-src 'self' blob: data:; "
+            "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com; "
             "media-src 'self' blob: https:; "
             "connect-src 'self' ws: wss: https://cdn.socket.io; "
             "frame-src https://www.instagram.com; "
