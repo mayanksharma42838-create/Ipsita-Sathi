@@ -267,11 +267,12 @@ def set_theme():
     if limited:
         return limited
 
-        data = request.get_json(silent=True) or {}
-        preset = (data.get("theme_preset") or "").strip()
+    data = request.get_json(silent=True) or {}
+    preset = (data.get("theme_preset") or "").strip()
     custom_url = (data.get("custom_url") or "").strip()
     opacity = data.get("opacity")
     allowed = {"blush", "midnight", "forest", "sand", "lavender", "custom"}
+
     if preset and preset not in allowed:
         return jsonify({"error": "invalid theme_preset"}), 400
 
@@ -279,6 +280,7 @@ def set_theme():
         g.room.theme_preset = preset[:64]
     if preset == "custom" and custom_url:
         g.room.theme_path = custom_url[:2048]
+
     if opacity is not None:
         try:
             g.room.theme_opacity = float(opacity)
@@ -289,10 +291,20 @@ def set_theme():
     url = g.room.theme_path if g.room.theme_preset == "custom" else "/api/theme/background"
     socketio.emit(
         "theme_updated",
-        {"theme_preset": g.room.theme_preset, "theme_url": url, "theme_opacity": g.room.theme_opacity},
+        {
+            "theme_preset": g.room.theme_preset,
+            "theme_url": url,
+            "theme_opacity": getattr(g.room, "theme_opacity", 0.92),
+        },
         room=f"room:{g.room.room_id}",
     )
-    return jsonify({"ok": True, "theme_preset": g.room.theme_preset, "theme_opacity": g.room.theme_opacity})
+    return jsonify(
+        {
+            "ok": True,
+            "theme_preset": g.room.theme_preset,
+            "theme_opacity": getattr(g.room, "theme_opacity", 0.92),
+        }
+    )
 
 
 @bp.get("/theme/search")
