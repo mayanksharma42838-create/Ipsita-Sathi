@@ -68,6 +68,7 @@
           </div>
         </div>
         <div class="toolbar">
+          <button type="button" class="btn ghost" id="btnGallery" title="Room Gallery">Vault</button>
           <button type="button" class="btn ghost" id="btnFilmTV" title="FilmTV Watch Party">FilmTV</button>
           <button type="button" class="btn ghost" id="btnTheme">Theme</button>
           <button type="button" class="btn ghost" id="btnDoodle">Doodle</button>
@@ -182,8 +183,14 @@
         <div class="theme-swatch" data-theme="lavender" style="background:linear-gradient(135deg,#2a1a40,#c9a0ff);">
         </div>
       </div>
-      <label style="margin-top:14px;">Upload custom background</label>
+      <label style="margin-top:14px;">Upload from gallery</label>
       <input type="file" id="themeFile" accept="image/*" />
+      <label style="margin-top:14px;">Or paste image URL</label>
+      <div style="display:flex;gap:8px;">
+        <input type="url" id="themeUrlInput" placeholder="https://.../wallpaper.jpg" style="flex:1;" />
+        <button type="button" class="btn" id="btnThemeUrl">Set</button>
+      </div>
+      <p class="err" id="themeError"></p>
       <div class="modal-actions">
         <button type="button" class="btn ghost" data-close="themeModal">Close</button>
       </div>
@@ -235,6 +242,20 @@
         <button type="button" class="btn ghost" data-close="igModal">Close</button>
       </div>
       <p class="err" id="igSessionStatus" style="color:var(--muted);"></p>
+    </div>
+  </div>
+
+  <!-- Gallery / Vault -->
+  <div class="overlay" id="galleryModal">
+    <div class="modal modal-lg">
+      <h3>Room Vault</h3>
+      <p class="hint">All shared photos and voice notes in this room. End-to-end encrypted.</p>
+      <div id="galleryGrid" class="gallery-grid">
+        <!-- Loaded dynamically -->
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="galleryModal">Close</button>
+      </div>
     </div>
   </div>
 

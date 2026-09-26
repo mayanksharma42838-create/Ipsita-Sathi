@@ -269,14 +269,20 @@ def set_theme():
 
     data = request.get_json(silent=True) or {}
     preset = (data.get("theme_preset") or "").strip()
+    custom_url = (data.get("custom_url") or "").strip()
     allowed = {"blush", "midnight", "forest", "sand", "lavender", "custom"}
     if preset not in allowed:
         return jsonify({"error": "invalid theme_preset"}), 400
+
     g.room.theme_preset = preset[:64]
+    if preset == "custom" and custom_url:
+        g.room.theme_path = custom_url[:2048]
+
     db.session.commit()
+    url = g.room.theme_path if preset == "custom" and custom_url else "/api/theme/background"
     socketio.emit(
         "theme_updated",
-        {"theme_preset": g.room.theme_preset, "theme_path": g.room.theme_path},
+        {"theme_preset": g.room.theme_preset, "theme_url": url},
         room=f"room:{g.room.room_id}",
     )
     return jsonify({"ok": True, "theme_preset": g.room.theme_preset})
@@ -604,6 +610,37 @@ def filmtv_clear():
         room=f"room:{g.room.room_id}",
     )
     return jsonify({"ok": True, "state": state})
+
+
+@bp.get("/gallery")
+@login_required
+def list_gallery():
+    """Fetch all non-expired media history for the room."""
+    rows = (
+        Message.query.filter(
+            Message.room_pk == g.room.id,
+            Message.deleted.is_(False),
+            Message.media_path.isnot(None),
+        )
+        .order_by(Message.created_at.desc())
+        .all()
+    )
+    out = []
+    for m in rows:
+        if m.is_expired():
+            continue
+        out.append(
+            {
+                "id": m.id,
+                "sender_id": m.sender_id,
+                "sender_name": m.sender.display_name if m.sender else "Partner",
+                "msg_type": m.msg_type,
+                "media_url": f"/api/media/{m.id}",
+                "media_mime": m.media_mime,
+                "created_at": m.created_at.isoformat(),
+            }
+        )
+    return jsonify({"gallery": out})
 
 
 @bp.route("/export", methods=["GET", "POST"])
