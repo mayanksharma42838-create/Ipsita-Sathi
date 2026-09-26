@@ -23,8 +23,8 @@ class Room(db.Model):
     theme_preset = db.Column(db.String(64), default="blush", nullable=False)
     theme_opacity = db.Column(db.Float, default=0.92, nullable=False)
     instagram_session_enc = db.Column(db.Text, nullable=True)
-    instagram_sync_url = db.Column(db.String(1024), nullable=True)
-        doodle_path = db.Column(db.String(512), nullable=True)
+        instagram_sync_url = db.Column(db.String(1024), nullable=True)
+    doodle_path = db.Column(db.String(512), nullable=True)
     # FilmTV watch party state
     filmtv_source_type = db.Column(db.String(32), nullable=True)  # url|upload (native only)
     filmtv_source = db.Column(db.String(2048), nullable=True)
