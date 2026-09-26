@@ -27,8 +27,8 @@ class Room(db.Model):
     doodle_path = db.Column(db.String(512), nullable=True)
     # FilmTV watch party state
     filmtv_source_type = db.Column(db.String(32), nullable=True)  # url|upload (native only)
-    filmtv_source = db.Column(db.String(2048), nullable=True)
-        filmtv_title = db.Column(db.String(256), nullable=True)
+        filmtv_source = db.Column(db.String(2048), nullable=True)
+    filmtv_title = db.Column(db.String(256), nullable=True)
     filmtv_playing = db.Column(db.Boolean, default=False, nullable=False)
     filmtv_position = db.Column(db.Float, default=0.0, nullable=False)
     filmtv_updated_at = db.Column(db.DateTime, nullable=True)
