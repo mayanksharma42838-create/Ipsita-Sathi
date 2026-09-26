@@ -17,12 +17,12 @@ for d in (INSTANCE_DIR, MEDIA_DIR, THEMES_DIR, UPLOADS_DIR, DOODLES_DIR, FILMTV_
     d.mkdir(parents=True, exist_ok=True)
 
 
-def _cors_origins() -> list[str]:
-    raw = os.environ.get(
-        "CORS_ORIGINS",
-        "http://127.0.0.1:5000,http://localhost:5000",
-    )
-    return [o.strip() for o in raw.split(",") if o.strip()]
+def _cors_origins() -> list[str] | str:
+    raw = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5000")
+    if isinstance(raw, str) and "," in raw:
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return raw
+
 
 
 class Config:
