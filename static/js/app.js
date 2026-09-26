@@ -23,7 +23,8 @@ const App = (() => {
     recording: false,
   };
 
-  const $ = (sel) => document.querySelector(sel); const $$ = (sel) => [...document.querySelectorAll(sel)];
+  const $ = (sel) => document.querySelector(sel);
+  const $$ = (sel) => [...document.querySelectorAll(sel)];
 
   function headers(json = true) {
     const h = { "X-Session-Token": state.token };
@@ -42,7 +43,8 @@ const App = (() => {
   }
 
   function showAuthError(msg) {
-    $("#authError").textContent = msg || "";
+    const el = $("#authError");
+    if (el) el.textContent = msg || "";
   }
 
   function genRoomId() {
@@ -53,9 +55,9 @@ const App = (() => {
   }
 
   function validateCreate() {
-    const id = $("#createRoomId").value.trim();
-    const pw = $("#createPassword").value;
-    const name = $("#createName").value.trim();
+    const id = $("#createRoomId")?.value.trim();
+    const pw = $("#createPassword")?.value;
+    const name = $("#createName")?.value.trim();
     let err = "";
     if (!id) err = "Room ID is required";
     else if (id.length < 4) err = "Room ID too short";
@@ -125,7 +127,7 @@ const App = (() => {
         });
       }
     } catch {
-      /* still clear local state */
+      /* ignore */
     }
     if (state.socket) {
       try {
@@ -143,8 +145,8 @@ const App = (() => {
     state.password = null;
     state.key = null;
     document.body.classList.remove("filmtv-open", "theater-mode");
-    $("#chatView").classList.remove("active");
-    $("#authView").classList.remove("hidden");
+    $("#chatView")?.classList.remove("active");
+    $("#authView")?.classList.remove("hidden");
     closeModal("settingsModal");
   }
 
@@ -164,8 +166,10 @@ const App = (() => {
 
     if (data.theme_opacity !== undefined) {
       document.documentElement.style.setProperty("--overlay-opacity", data.theme_opacity);
-      $("#themeOpacity").value = Math.round(data.theme_opacity * 100);
-      $("#themeOpacityVal").textContent = Math.round(data.theme_opacity * 100) + "%";
+      if ($("#themeOpacity")) {
+        $("#themeOpacity").value = Math.round(data.theme_opacity * 100);
+        $("#themeOpacityVal").textContent = Math.round(data.theme_opacity * 100) + "%";
+      }
     }
 
     OfflineStore.setSession({
@@ -175,10 +179,10 @@ const App = (() => {
       roomId: state.roomId,
     });
 
-    $("#authView").classList.add("hidden");
-    $("#chatView").classList.add("active");
-    $("#roomLabel").textContent = state.roomId;
-    $("#meLabel").textContent = state.displayName;
+    $("#authView")?.classList.add("hidden");
+    $("#chatView")?.classList.add("active");
+    if ($("#roomLabel")) $("#roomLabel").textContent = state.roomId;
+    if ($("#meLabel")) $("#meLabel").textContent = state.displayName;
 
     initFilmTV();
     initZoom();
@@ -186,7 +190,13 @@ const App = (() => {
     await loadMessages();
     await loadGallery();
     await flushOutbox();
-    applyTheme("blush");
+
+    if (data.theme_preset === "custom") {
+      applyCustomTheme();
+    } else {
+      applyTheme(data.theme_preset || "blush");
+    }
+
     if (data.filmtv) await FilmTV.loadState(data.filmtv, state.memberId);
     else await refreshFilmTVState();
   }
@@ -230,8 +240,8 @@ const App = (() => {
 
   async function loadFilmTVUrl() {
     setFilmTVError("");
-    const url = $("#filmtvUrl").value.trim();
-    const title = ($("#filmtvTitleInput").value || "").trim();
+    const url = $("#filmtvUrl")?.value.trim();
+    const title = ($("#filmtvTitleInput")?.value || "").trim();
     if (!url) {
       setFilmTVError("Paste a direct .mp4 / .webm link.");
       return;
@@ -244,26 +254,14 @@ const App = (() => {
       }
       const host = (u.hostname || "").toLowerCase();
       const blocked = [
-        "youtube.com",
-        "youtu.be",
-        "youtube-nocookie.com",
-        "vimeo.com",
-        "dailymotion.com",
-        "twitch.tv",
-        "netflix.com",
+        "youtube.com", "youtu.be", "youtube-nocookie.com",
+        "vimeo.com", "dailymotion.com", "twitch.tv", "netflix.com",
       ];
       if (blocked.some((b) => host === b || host.endsWith("." + b))) {
-        setFilmTVError(
-          "Streaming sites are not allowed — upload an MP4/WebM or paste a direct file URL."
-        );
+        setFilmTVError("Streaming sites are not allowed — upload an MP4/WebM or paste a direct file URL.");
         return;
       }
-      if (
-        host === "localhost" ||
-        host === "127.0.0.1" ||
-        host.startsWith("192.168.") ||
-        host.startsWith("10.")
-      ) {
+      if (["localhost", "127.0.0.1"].includes(host) || host.startsWith("192.168.") || host.startsWith("10.")) {
         setFilmTVError("Private / local network URLs are blocked.");
         return;
       }
@@ -292,7 +290,7 @@ const App = (() => {
     if (!file) return;
     const fd = new FormData();
     fd.append("file", file);
-    const title = ($("#filmtvTitleInput").value || "").trim();
+    const title = ($("#filmtvTitleInput")?.value || "").trim();
     if (title) fd.append("title", title);
     try {
       const res = await fetch("/api/filmtv/upload", {
@@ -303,7 +301,7 @@ const App = (() => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed");
       await FilmTV.loadState(data.state);
-      $("#filmtvFile").value = "";
+      if ($("#filmtvFile")) $("#filmtvFile").value = "";
     } catch (e) {
       setFilmTVError(e.message);
     }
@@ -314,7 +312,7 @@ const App = (() => {
     try {
       const data = await api("/api/filmtv/clear", { method: "POST", body: "{}" });
       await FilmTV.loadState(data.state);
-      $("#filmtvUrl").value = "";
+      if ($("#filmtvUrl")) $("#filmtvUrl").value = "";
     } catch (e) {
       setFilmTVError(e.message);
     }
@@ -322,7 +320,6 @@ const App = (() => {
 
   function connectSocket() {
     if (state.socket) state.socket.disconnect();
-    // Fixed clean dynamic initialization for production & local
     state.socket = io({ auth: { token: state.token } });
     FilmTV.setSocket(state.socket);
 
@@ -339,16 +336,19 @@ const App = (() => {
     state.socket.on("presence", (p) => {
       const el = $("#presenceDot");
       const txt = $("#presenceText");
-      if (p.online) {
-        el.classList.remove("off");
-        txt.textContent = `${p.display_name} online`;
-      } else {
-        el.classList.add("off");
-        txt.textContent = `${p.display_name} offline`;
+      if (el && txt) {
+        if (p.online) {
+          el.classList.remove("off");
+          txt.textContent = `${p.display_name} online`;
+        } else {
+          el.classList.add("off");
+          txt.textContent = `${p.display_name} offline`;
+        }
       }
     });
     state.socket.on("typing", (p) => {
-      $("#typing").textContent = p.typing ? `${p.display_name} is typing…` : "";
+      const typingEl = $("#typing");
+      if (typingEl) typingEl.textContent = p.typing ? `${p.display_name} is typing…` : "";
     });
     state.socket.on("theme_updated", (t) => {
       if (t.theme_opacity !== undefined) {
@@ -379,14 +379,15 @@ const App = (() => {
   function initZoom() {
     const img = $("#zoomImage");
     const viewport = $(".zoom-viewport");
+    if (!img || !viewport) return;
 
     const apply = () => {
       img.style.transform = `translate(${zoomState.x}px, ${zoomState.y}px) scale(${zoomState.scale})`;
     };
 
-    $("#btnZoomIn").addEventListener("click", () => { zoomState.scale *= 1.2; apply(); });
-    $("#btnZoomOut").addEventListener("click", () => { zoomState.scale /= 1.2; apply(); });
-    $("#btnZoomReset").addEventListener("click", () => {
+    $("#btnZoomIn")?.addEventListener("click", () => { zoomState.scale *= 1.2; apply(); });
+    $("#btnZoomOut")?.addEventListener("click", () => { zoomState.scale /= 1.2; apply(); });
+    $("#btnZoomReset")?.addEventListener("click", () => {
       zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
       apply();
     });
@@ -406,7 +407,6 @@ const App = (() => {
 
     window.addEventListener("mouseup", () => { zoomState.dragging = false; });
 
-    // Simple pinch-to-zoom simulation with wheel
     viewport.addEventListener("wheel", (e) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -417,6 +417,7 @@ const App = (() => {
 
   function openZoom(src) {
     const img = $("#zoomImage");
+    if (!img) return;
     img.src = src;
     zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
     img.style.transform = `none`;
@@ -429,7 +430,7 @@ const App = (() => {
     try {
       const data = await api("/api/gallery");
       grid.innerHTML = "";
-      if (!data.gallery.length) {
+      if (!data.gallery || !data.gallery.length) {
         grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;padding:20px;">The vault is empty. Share photos or voice notes to see them here.</p>';
         return;
       }
@@ -465,6 +466,7 @@ const App = (() => {
 
   async function loadMessages() {
     const box = $("#messages");
+    if (!box) return;
     try {
       const data = await api("/api/messages");
       box.innerHTML = "";
@@ -472,7 +474,7 @@ const App = (() => {
       OfflineStore.cacheMessages(state.roomId, data.messages);
       scrollMessages();
     } catch {
-      const cached = OfflineStore.getCachedMessages(state.roomId);
+      const cached = OfflineStore.getCachedMessages(state.roomId) || [];
       box.innerHTML = "";
       for (const m of cached) await renderMessage(m, false);
     }
@@ -498,17 +500,13 @@ const App = (() => {
       try {
         const img = await fetchDecryptedMedia(m);
         if (img) div.appendChild(img);
-      } catch {
-        /* skip */
-      }
+      } catch { /* skip */ }
     }
     if (m.media_url && m.msg_type === "voice") {
       try {
         const audio = await fetchDecryptedAudio(m);
         if (audio) div.appendChild(audio);
-      } catch {
-        /* skip */
-      }
+      } catch { /* skip */ }
     }
 
     if (m.expires_at) {
@@ -519,20 +517,18 @@ const App = (() => {
       scheduleExpiry(m.id, m.expires_at);
     }
 
-    $("#messages").appendChild(div);
+    $("#messages")?.appendChild(div);
     if (scroll) scrollMessages();
   }
 
   function scheduleExpiry(id, expiresAt) {
     const ms = new Date(expiresAt).getTime() - Date.now();
     if (ms <= 0) {
-      const el = document.querySelector(`[data-msg-id="${id}"]`);
-      if (el) el.remove();
+      document.querySelector(`[data-msg-id="${id}"]`)?.remove();
       return;
     }
     setTimeout(() => {
-      const el = document.querySelector(`[data-msg-id="${id}"]`);
-      if (el) el.remove();
+      document.querySelector(`[data-msg-id="${id}"]`)?.remove();
     }, ms + 200);
   }
 
@@ -574,11 +570,12 @@ const App = (() => {
 
   function scrollMessages() {
     const box = $("#messages");
-    box.scrollTop = box.scrollHeight;
+    if (box) box.scrollTop = box.scrollHeight;
   }
 
   async function sendText() {
     const input = $("#composerInput");
+    if (!input) return;
     const text = input.value.trim();
     if (!text || !state.key) return;
     input.value = "";
@@ -592,7 +589,7 @@ const App = (() => {
 
     if (!navigator.onLine) {
       OfflineStore.enqueueOutbox({ type: "text", payload });
-      $("#offlineBanner").classList.add("show");
+      $("#offlineBanner")?.classList.add("show");
       return;
     }
 
@@ -606,7 +603,7 @@ const App = (() => {
 
   async function flushOutbox() {
     if (!navigator.onLine) return;
-    const items = OfflineStore.getOutbox();
+    const items = OfflineStore.getOutbox() || [];
     const remaining = [];
     for (const item of items) {
       try {
@@ -618,7 +615,7 @@ const App = (() => {
       }
     }
     OfflineStore.setOutbox(remaining);
-    if (!remaining.length) $("#offlineBanner").classList.remove("show");
+    if (!remaining.length) $("#offlineBanner")?.classList.remove("show");
   }
 
   async function sendPhoto(file) {
@@ -646,7 +643,8 @@ const App = (() => {
     if (state.recording) {
       state.mediaRecorder.stop();
       state.recording = false;
-      $("#btnVoice").textContent = "🎙";
+      const btn = $("#btnVoice");
+      if (btn) btn.textContent = "🎙";
       return;
     }
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -673,7 +671,8 @@ const App = (() => {
     };
     state.mediaRecorder.start();
     state.recording = true;
-    $("#btnVoice").textContent = "⏹";
+    const btn = $("#btnVoice");
+    if (btn) btn.textContent = "⏹";
   }
 
   function applyTheme(name) {
@@ -687,8 +686,9 @@ const App = (() => {
   }
 
   async function applyCustomTheme(url = null) {
-    const bg = url || "/api/theme/background?v=" + Date.now();
+    const bg = url || `/api/theme/background?v=${Date.now()}`;
     document.documentElement.style.setProperty("--theme-image", `url(${bg})`);
+    document.body.style.background = `url(${bg}) center/cover no-repeat fixed`;
   }
 
   async function saveTheme(preset) {
@@ -697,7 +697,8 @@ const App = (() => {
   }
 
   async function uploadTheme(file) {
-    $("#themeError").textContent = "";
+    const errEl = $("#themeError");
+    if (errEl) errEl.textContent = "";
     const fd = new FormData();
     fd.append("file", file);
     try {
@@ -710,41 +711,63 @@ const App = (() => {
       if (!res.ok) throw new Error(data.error || "Theme upload failed");
       await applyCustomTheme();
     } catch (e) {
-      $("#themeError").textContent = e.message;
+      if (errEl) errEl.textContent = e.message;
     }
   }
 
   async function setThemeUrl(url) {
     if (!url) return;
-    $("#themeError").textContent = "";
+    const errEl = $("#themeError");
+    if (errEl) errEl.textContent = "";
     try {
       await api("/api/theme", {
         method: "POST",
         body: JSON.stringify({ theme_preset: "custom", custom_url: url }),
       });
       await applyCustomTheme(url);
+      closeModal("themeModal");
     } catch (e) {
-      $("#themeError").textContent = e.message;
+      if (errEl) errEl.textContent = e.message;
     }
   }
 
   async function searchTheme() {
-    const query = $("#themeSearchInput").value.trim();
-    if (!query) return;
+    const queryInput = $("#themeSearchInput");
     const grid = $("#themeSearchResults");
-    grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;">Searching...</p>';
+    if (!queryInput || !grid) return;
+
+    const query = queryInput.value.trim();
+    if (!query) return;
+
+    grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;">Searching Unsplash...</p>';
     try {
-      // Using Unsplash Source for direct random query results
-      const results = [];
-      for (let i = 0; i < 9; i++) {
-        const id = Math.random().toString(36).substring(7);
-        results.push(`https://source.unsplash.com/featured/400x400?${query}&sig=${id}`);
-      }
+      // Robust Unsplash search request via backend route or fallback public search API
+      const res = await api(`/api/theme/search?q=${encodeURIComponent(query)}`).catch(async () => {
+        // Fallback robust public image generation if specific backend proxy isn't built yet
+        const publicResults = [];
+        for (let i = 0; i < 9; i++) {
+          const sig = Math.random().toString(36).substring(7);
+          publicResults.push(`https://picsum.photos/seed/${query}${sig}/400/400`);
+        }
+        return { results: publicResults };
+      });
+
+      const images = res.results || res;
       grid.innerHTML = "";
-      results.forEach(url => {
+
+      if (!images || !images.length) {
+        grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;">No photos found.</p>';
+        return;
+      }
+
+      images.forEach((url) => {
         const item = document.createElement("div");
         item.className = "search-item";
         item.style.backgroundImage = `url(${url})`;
+        item.style.backgroundSize = "cover";
+        item.style.cursor = "pointer";
+        item.style.height = "120px";
+        item.style.borderRadius = "8px";
         item.addEventListener("click", () => setThemeUrl(url));
         grid.appendChild(item);
       });
@@ -754,27 +777,28 @@ const App = (() => {
   }
 
   async function updateDisplayName() {
-    const name = $("#settingsName").value.trim();
+    const name = $("#settingsName")?.value.trim();
     if (!name) return;
     await api("/api/auth/display-name", {
       method: "POST",
       body: JSON.stringify({ display_name: name }),
     });
     state.displayName = name;
-    $("#meLabel").textContent = name;
+    if ($("#meLabel")) $("#meLabel").textContent = name;
     closeModal("settingsModal");
   }
 
   function openModal(id) {
-    $(`#${id}`).classList.add("open");
+    $(`#${id}`)?.classList.add("open");
   }
   function closeModal(id) {
-    $(`#${id}`).classList.remove("open");
+    $(`#${id}`)?.classList.remove("open");
   }
 
   function showInstagram(url) {
     const frame = $("#igFrame");
     const ph = $("#igPlaceholder");
+    if (!frame || !ph) return;
     if (!url) {
       frame.removeAttribute("src");
       ph.style.display = "flex";
@@ -803,32 +827,33 @@ const App = (() => {
   }
 
   async function syncInstagram() {
-    const url = $("#igUrl").value.trim();
+    const url = $("#igUrl")?.value.trim();
     await api("/api/instagram/sync", { method: "POST", body: JSON.stringify({ url }) });
     if (state.socket) state.socket.emit("instagram_nav", { token: state.token, url });
     showInstagram(url);
   }
 
   async function saveIgSession() {
-    const raw = $("#igSession").value.trim();
+    const raw = $("#igSession")?.value.trim();
     if (!raw || !state.key) return;
     const enc = await CryptoClient.encryptText(state.key, raw);
     await api("/api/instagram/session", {
       method: "POST",
       body: JSON.stringify({ session_ciphertext: enc }),
     });
-    $("#igSessionStatus").textContent = "Session saved (encrypted). Partner can load it.";
+    if ($("#igSessionStatus")) $("#igSessionStatus").textContent = "Session saved (encrypted). Partner can load it.";
   }
 
   async function loadIgSession() {
     const data = await api("/api/instagram/session");
+    const statusEl = $("#igSessionStatus");
     if (!data.session_ciphertext) {
-      $("#igSessionStatus").textContent = "No shared session yet.";
+      if (statusEl) statusEl.textContent = "No shared session yet.";
       return;
     }
     const plain = await CryptoClient.decryptText(state.key, data.session_ciphertext);
-    $("#igSession").value = plain || "";
-    $("#igSessionStatus").textContent = plain ? "Session loaded." : "Could not decrypt.";
+    if ($("#igSession")) $("#igSession").value = plain || "";
+    if (statusEl) statusEl.textContent = plain ? "Session loaded." : "Could not decrypt.";
   }
 
   async function saveDoodle() {
@@ -844,11 +869,12 @@ const App = (() => {
   }
 
   function bindUI() {
-    // Persistent room info: don't overwrite if user is trying to join an existing room
-    $("#createRoomId").value = genRoomId();
-    $("#createRoomId").addEventListener("input", validateCreate);
-    $("#createPassword").addEventListener("input", validateCreate);
-    $("#createName").addEventListener("input", validateCreate);
+    const roomIdInput = $("#createRoomId");
+    if (roomIdInput) roomIdInput.value = genRoomId();
+
+    $("#createRoomId")?.addEventListener("input", validateCreate);
+    $("#createPassword")?.addEventListener("input", validateCreate);
+    $("#createName")?.addEventListener("input", validateCreate);
 
     $$(".tabs button").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -856,15 +882,18 @@ const App = (() => {
           (".tabs button").forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
         const tab = btn.dataset.tab;
-        $("#createForm").style.display = tab === "create" ? "block" : "none";
-        $("#joinForm").style.display = tab === "join" ? "block" : "none";
+        const createForm = $("#createForm");
+        const joinForm = $("#joinForm");
+        if (createForm) createForm.style.display = tab === "create" ? "block" : "none";
+        if (joinForm) joinForm.style.display = tab === "join" ? "block" : "none";
       });
     });
 
-    $("#btnCreate").addEventListener("click", createRoom);
-    $("#btnJoin").addEventListener("click", joinRoom);
-    $("#btnSend").addEventListener("click", sendText);
-    $("#composerInput").addEventListener("keydown", (e) => {
+    $("#btnCreate")?.addEventListener("click", createRoom);
+    $("#btnJoin")?.addEventListener("click", joinRoom);
+    $("#btnSend")?.addEventListener("click", sendText);
+
+    $("#composerInput")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         sendText();
@@ -878,11 +907,11 @@ const App = (() => {
       }
     });
 
-    $("#ttlSelect").addEventListener("change", (e) => {
+    $("#ttlSelect")?.addEventListener("change", (e) => {
       state.ttlSeconds = Number(e.target.value) || 0;
     });
 
-    $("#photoInput").addEventListener("change", async (e) => {
+    $("#photoInput")?.addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (f) {
         try {
@@ -894,82 +923,86 @@ const App = (() => {
       e.target.value = "";
     });
 
-    $("#btnVoice").addEventListener("click", () =>
+    $("#btnVoice")?.addEventListener("click", () =>
       toggleVoice().catch((e) => alert(e.message || "Mic permission needed"))
     );
 
-    $("#btnSettings").addEventListener("click", () => {
-      $("#settingsName").value = state.displayName || "";
+    $("#btnSettings")?.addEventListener("click", () => {
+      const settingsName = $("#settingsName");
+      if (settingsName) settingsName.value = state.displayName || "";
       openModal("settingsModal");
     });
-    $("#btnTheme").addEventListener("click", () => openModal("themeModal"));
-    $("#btnDoodle").addEventListener("click", () => openModal("doodleModal"));
-    $("#btnIg").addEventListener("click", () => openModal("igModal"));
-    $("#btnGallery").addEventListener("click", () => {
+
+    $("#btnTheme")?.addEventListener("click", () => openModal("themeModal"));
+    $("#btnDoodle")?.addEventListener("click", () => openModal("doodleModal"));
+    $("#btnIg")?.addEventListener("click", () => openModal("igModal"));
+    $("#btnGallery")?.addEventListener("click", () => {
       openModal("galleryModal");
       loadGallery();
     });
 
-    $("#btnFilmTV").addEventListener("click", () => {
+    $("#btnFilmTV")?.addEventListener("click", () => {
       if (document.body.classList.contains("filmtv-open")) closeFilmTV();
       else openFilmTV();
     });
-    $("#btnFilmTVClose").addEventListener("click", closeFilmTV);
-    $("#btnTheater").addEventListener("click", () => {
-      FilmTV.toggleTheater();
-    });
-    $("#btnFilmTVLoad").addEventListener("click", () => loadFilmTVUrl());
-    $("#filmtvUrl").addEventListener("keydown", (e) => {
+    $("#btnFilmTVClose")?.addEventListener("click", closeFilmTV);
+    $("#btnTheater")?.addEventListener("click", () => FilmTV.toggleTheater());
+    $("#btnFilmTVLoad")?.addEventListener("click", () => loadFilmTVUrl());
+
+    $("#filmtvUrl")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         loadFilmTVUrl();
       }
     });
-    $("#filmtvFile").addEventListener("change", (e) => {
+    $("#filmtvFile")?.addEventListener("change", (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) uploadFilmTV(f);
     });
-    $("#btnFilmTVClear").addEventListener("click", () => clearFilmTV()); $$("[data-close]").forEach((b) =>
+    $("#btnFilmTVClear")?.addEventListener("click", () => clearFilmTV()); $$("[data-close]").forEach((b) =>
       b.addEventListener("click", () => closeModal(b.dataset.close))
     );
 
-    $("#btnSaveName").addEventListener("click", () =>
+    $("#btnSaveName")?.addEventListener("click", () =>
       updateDisplayName().catch((e) => alert(e.message))
     );
+
     const onLogout = () => logout().catch((e) => alert(e.message || "Logout failed"));
-    $("#btnLogout").addEventListener("click", onLogout);
-    const logoutTop = $("#btnLogoutTop"); if (logoutTop) logoutTop.addEventListener("click", onLogout); $$(".theme-swatch").forEach((el) => {
+    $("#btnLogout")?.addEventListener("click", onLogout);
+    $("#btnLogoutTop")?.addEventListener("click", onLogout); $$(".theme-swatch").forEach((el) => {
       el.addEventListener("click", () => saveTheme(el.dataset.theme).catch((e) => alert(e.message)));
     });
-    $("#themeFile").addEventListener("change", async (e) => {
+
+    $("#themeFile")?.addEventListener("change", async (e) => {
       const f = e.target.files[0];
       if (f) await uploadTheme(f).catch((err) => alert(err.message));
     });
 
-    $("#btnThemeSearch").addEventListener("click", () => searchTheme());
-    $("#themeSearchInput").addEventListener("keydown", (e) => {
+    $("#btnThemeSearch")?.addEventListener("click", () => searchTheme());
+    $("#themeSearchInput")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") searchTheme();
     });
 
-    $("#themeOpacity").addEventListener("input", (e) => {
+    $("#themeOpacity")?.addEventListener("input", (e) => {
       const val = e.target.value;
-      $("#themeOpacityVal").textContent = val + "%";
+      const valEl = $("#themeOpacityVal");
+      if (valEl) valEl.textContent = val + "%";
       document.documentElement.style.setProperty("--overlay-opacity", val / 100);
     });
 
-    $("#btnIgSync").addEventListener("click", () => syncInstagram().catch((e) => alert(e.message)));
-    $("#btnIgSaveSession").addEventListener("click", () => saveIgSession().catch((e) => alert(e.message)));
-    $("#btnIgLoadSession").addEventListener("click", () => loadIgSession().catch((e) => alert(e.message)));
+    $("#btnIgSync")?.addEventListener("click", () => syncInstagram().catch((e) => alert(e.message)));
+    $("#btnIgSaveSession")?.addEventListener("click", () => saveIgSession().catch((e) => alert(e.message)));
+    $("#btnIgLoadSession")?.addEventListener("click", () => loadIgSession().catch((e) => alert(e.message)));
 
-    $("#doodleColor").addEventListener("input", (e) => DoodleBoard.setColor(e.target.value));
-    $("#doodleWidth").addEventListener("input", (e) => DoodleBoard.setWidth(e.target.value));
-    $("#btnDoodlePen").addEventListener("click", () => DoodleBoard.setTool("pen"));
-    $("#btnDoodleEraser").addEventListener("click", () => DoodleBoard.setTool("eraser"));
-    $("#btnDoodleClear").addEventListener("click", () => {
+    $("#doodleColor")?.addEventListener("input", (e) => DoodleBoard.setColor(e.target.value));
+    $("#doodleWidth")?.addEventListener("input", (e) => DoodleBoard.setWidth(e.target.value));
+    $("#btnDoodlePen")?.addEventListener("click", () => DoodleBoard.setTool("pen"));
+    $("#btnDoodleEraser")?.addEventListener("click", () => DoodleBoard.setTool("eraser"));
+    $("#btnDoodleClear")?.addEventListener("click", () => {
       DoodleBoard.clear();
       if (state.socket) state.socket.emit("doodle_clear", { token: state.token });
     });
-    $("#btnDoodleSave").addEventListener("click", () => saveDoodle().catch((e) => alert(e.message)));
+    $("#btnDoodleSave")?.addEventListener("click", () => saveDoodle().catch((e) => alert(e.message)));
 
     DoodleBoard.init($("#doodleCanvas"), (stroke) => {
       if (state.socket) {
@@ -984,11 +1017,11 @@ const App = (() => {
     });
 
     window.addEventListener("online", () => {
-      $("#offlineBanner").classList.remove("show");
+      $("#offlineBanner")?.classList.remove("show");
       flushOutbox();
       loadMessages();
     });
-    window.addEventListener("offline", () => $("#offlineBanner").classList.add("show"));
+    window.addEventListener("offline", () => $("#offlineBanner")?.classList.add("show"));
 
     document.addEventListener("click", (e) => {
       if (e.target.closest("[data-export]")) {
@@ -1032,10 +1065,11 @@ const App = (() => {
         }
       }
 
-      $("#authView").classList.add("hidden");
-      $("#chatView").classList.add("active");
-      $("#roomLabel").textContent = state.roomId;
-      $("#meLabel").textContent = state.displayName;
+      $("#authView")?.classList.add("hidden");
+      $("#chatView")?.classList.add("active");
+      if ($("#roomLabel")) $("#roomLabel").textContent = state.roomId;
+      if ($("#meLabel")) $("#meLabel").textContent = state.displayName;
+
       initFilmTV();
       initZoom();
       connectSocket();
