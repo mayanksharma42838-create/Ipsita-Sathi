@@ -267,8 +267,8 @@ def set_theme():
     if limited:
         return limited
 
-    data = request.get_json(silent=True) or {}
-        preset = (data.get("theme_preset") or "").strip()
+        data = request.get_json(silent=True) or {}
+    preset = (data.get("theme_preset") or "").strip()
     custom_url = (data.get("custom_url") or "").strip()
     opacity = data.get("opacity")
     allowed = {"blush", "midnight", "forest", "sand", "lavender", "custom"}
