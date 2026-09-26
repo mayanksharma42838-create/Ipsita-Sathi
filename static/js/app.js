@@ -243,35 +243,28 @@ const App = (() => {
     const url = $("#filmtvUrl")?.value.trim();
     const title = ($("#filmtvTitleInput")?.value || "").trim();
     if (!url) {
-      setFilmTVError("Paste a direct .mp4 / .webm link.");
+      setFilmTVError("Please paste a valid video URL, YouTube link, or document link.");
       return;
     }
     try {
       const u = new URL(url);
-      if (u.protocol !== "https:") {
-        setFilmTVError("Only HTTPS direct video URLs are allowed.");
+      if (u.protocol !== "https:" && u.protocol !== "http:") {
+        setFilmTVError("Only HTTP/HTTPS URLs are allowed.");
         return;
       }
       const host = (u.hostname || "").toLowerCase();
-      const blocked = [
-        "youtube.com", "youtu.be", "youtube-nocookie.com",
-        "vimeo.com", "dailymotion.com", "twitch.tv", "netflix.com",
-      ];
-      if (blocked.some((b) => host === b || host.endsWith("." + b))) {
-        setFilmTVError("Streaming sites are not allowed — upload an MP4/WebM or paste a direct file URL.");
-        return;
-      }
-      if (["localhost", "127.0.0.1"].includes(host) || host.startsWith("192.168.") || host.startsWith("10.")) {
+      if (
+        host === "localhost" ||
+        host === "127.0.0.1" ||
+        host.startsWith("192.168.") ||
+        host.startsWith("10.")
+      ) {
         setFilmTVError("Private / local network URLs are blocked.");
         return;
       }
-      const path = (u.pathname || "").toLowerCase();
-      if (!/\.(mp4|webm|ogg|mov|mkv|m4v)$/.test(path)) {
-        setFilmTVError("URL must end with a direct video extension (e.g. .mp4, .webm).");
-        return;
-      }
+      // Streaming sites & YouTube restrictions successfully removed to allow all platforms.
     } catch {
-      setFilmTVError("Invalid URL.");
+      setFilmTVError("Invalid URL format.");
       return;
     }
     try {
@@ -727,7 +720,7 @@ const App = (() => {
       await applyCustomTheme(url);
       closeModal("themeModal");
     } catch (e) {
-      if (errEl) errEl.textContent = errEl.textContent = e.message;
+      if (errEl) errEl.textContent = e.message;
     }
   }
 
