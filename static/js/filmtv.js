@@ -1,6 +1,7 @@
 /**
  * Shared interactive workspace / iframe viewer.
- * Allows users to share URLs for viewing docs, websites, and synced media.
+ * Allows users to share URLs for viewing docs, websites, streaming media (YouTube, Netflix, etc.),
+ * and synced documents (PDF, Word, PPT, Excel) with host-controlled sync.
  */
 const FilmTV = (() => {
   let containerEl = null;
@@ -37,7 +38,7 @@ const FilmTV = (() => {
       iframeEl.style.width = "100%";
       iframeEl.style.height = "100%";
       iframeEl.style.border = "none";
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms");
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads");
 
       iframeEl.onload = () => {
         try {
@@ -47,7 +48,7 @@ const FilmTV = (() => {
               emitControl("scroll", { scroll_top: doc.documentElement.scrollTop });
             }
           });
-        } catch (e) { /* Cross-origin blocks scroll sync */ }
+        } catch (e) { /* Cross-origin blocks scroll sync for external sites like YouTube */ }
       };
 
       containerEl.appendChild(iframeEl);
@@ -89,6 +90,7 @@ const FilmTV = (() => {
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
 
+    // Check if source is a direct video file or uploaded media
     const isVideo = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i.test(state.source) || state.source_type === "upload";
 
     if (isVideo) {
@@ -115,14 +117,29 @@ const FilmTV = (() => {
         applyingRemote = false;
       }
     } else {
-      if (videoEl) videoEl.style.display = "none";
+      // Handles Streaming platforms (YouTube, Netflix, Twitch, Vimeo) & Documents (PDF, Word, PPT, Excel via viewer)
+      if (videoEl) {
+        videoEl.pause();
+        videoEl.style.display = "none";
+      }
       if (iframeEl) {
         iframeEl.style.display = "block";
-        if (iframeEl.src !== state.source) iframeEl.src = state.source;
+
+        let displaySource = state.source;
+        // Optional: Embed formatting helpers for YouTube if raw watch link is passed
+        if (displaySource.includes("youtube.com/watch?v=")) {
+          displaySource = displaySource.replace("watch?v=", "embed/");
+        } else if (displaySource.includes("youtu.be/")) {
+          displaySource = displaySource.replace("youtu.be/", "www.youtube.com/embed/");
+        }
+
+        if (iframeEl.src !== displaySource && iframeEl.src.indexOf(displaySource) === -1) {
+          iframeEl.src = displaySource;
+        }
 
         applyingRemote = true;
         try {
-          if (state.scroll_top !== undefined) {
+          if (state.scroll_top !== undefined && iframeEl.contentWindow) {
             iframeEl.contentWindow.scrollTo(0, state.scroll_top);
           }
         } catch (e) { }
@@ -130,9 +147,8 @@ const FilmTV = (() => {
       }
     }
 
-    // Only host gets full native video controls, partner watches synced view
     if (videoEl) videoEl.controls = isHost;
-    updateStatusBadge(isHost ? "Hosting (Synced)" : "Watching (Synced)");
+    updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
   }
 
   function clearPlayer() {
@@ -158,8 +174,8 @@ const FilmTV = (() => {
     if (!payload || !payload.state) return;
     const { action, state } = payload;
 
-    if (action === "load" || action === "sync" || action === "play" || action === "pause" || action === "seek") {
-      await loadState(state, state.host_id); // keep synced with current host state
+    if (action === "load" || action === "sync" || action === "play" || action === "pause" || action === "seek" || action === "scroll") {
+      await loadState(state, state.host_id);
     } else if (action === "clear") {
       clearPlayer();
     }

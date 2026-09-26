@@ -192,7 +192,7 @@ const App = (() => {
     await flushOutbox();
 
     if (data.theme_preset === "custom") {
-      applyCustomTheme();
+      applyCustomTheme(data.theme_url);
     } else {
       applyTheme(data.theme_preset || "blush");
     }
@@ -727,7 +727,7 @@ const App = (() => {
       await applyCustomTheme(url);
       closeModal("themeModal");
     } catch (e) {
-      if (errEl) errEl.textContent = e.message;
+      if (errEl) errEl.textContent = errEl.textContent = e.message;
     }
   }
 
@@ -736,43 +736,46 @@ const App = (() => {
     const grid = $("#themeSearchResults");
     if (!queryInput || !grid) return;
 
-    const query = queryInput.value.trim();
-    if (!query) return;
+    const query = queryInput.value.trim() || "wallpaper";
+    grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;color:#fff;">Searching photos...</p>';
 
-    grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;">Searching Unsplash...</p>';
     try {
-      // Robust Unsplash search request via backend route or fallback public search API
-      const res = await api(`/api/theme/search?q=${encodeURIComponent(query)}`).catch(async () => {
-        // Fallback robust public image generation if specific backend proxy isn't built yet
-        const publicResults = [];
-        for (let i = 0; i < 9; i++) {
-          const sig = Math.random().toString(36).substring(7);
-          publicResults.push(`https://picsum.photos/seed/${query}${sig}/400/400`);
+      let images = [];
+      try {
+        const res = await api(`/api/theme/search?q=${encodeURIComponent(query)}`);
+        if (res && res.results && res.results.length > 0) {
+          images = res.results;
         }
-        return { results: publicResults };
-      });
-
-      const images = res.results || res;
-      grid.innerHTML = "";
-
-      if (!images || !images.length) {
-        grid.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;">No photos found.</p>';
-        return;
+      } catch (err) {
+        // Fallback generator if backend search route encounters any limit
       }
 
+      if (!images || images.length === 0) {
+        for (let i = 0; i < 9; i++) {
+          const sig = Math.floor(Math.random() * 1000) + i;
+          images.push(`https://picsum.photos/seed/${encodeURIComponent(query)}_${sig}/400/400`);
+        }
+      }
+
+      grid.innerHTML = "";
       images.forEach((url) => {
         const item = document.createElement("div");
         item.className = "search-item";
         item.style.backgroundImage = `url(${url})`;
         item.style.backgroundSize = "cover";
+        item.style.backgroundPosition = "center";
         item.style.cursor = "pointer";
         item.style.height = "120px";
         item.style.borderRadius = "8px";
-        item.addEventListener("click", () => setThemeUrl(url));
+        item.style.border = "2px solid rgba(255,255,255,0.2)";
+
+        item.addEventListener("click", () => {
+          setThemeUrl(url);
+        });
         grid.appendChild(item);
       });
     } catch (e) {
-      grid.innerHTML = `<p class="err">${e.message}</p>`;
+      grid.innerHTML = `<p class="err" style="grid-column:1/-1;text-align:center;">Failed to load photos.</p>`;
     }
   }
 
