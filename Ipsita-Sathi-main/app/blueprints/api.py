@@ -573,11 +573,11 @@ def filmtv_load():
     if not url:
         return jsonify({"error": "url required"}), 400
 
-    # Relaxed validation for general workspace support
+        # Relaxed validation for general workspace support
     if not url.startswith("https://"):
         return jsonify({"error": "Only HTTPS URLs are allowed for security"}), 400
 
-        g.room.filmtv_source_type = "url"
+    g.room.filmtv_source_type = "url"
     g.room.filmtv_source = url
     g.room.filmtv_title = title
     g.room.filmtv_playing = False
@@ -627,11 +627,11 @@ def filmtv_upload():
         except OSError:
             pass
 
-    filename = f"filmtv_{g.room.room_id}_{uuid.uuid4().hex}{ext}"
+        filename = f"filmtv_{g.room.room_id}_{uuid.uuid4().hex}{ext}"
     dest = Path(current_app.config["FILMTV_DIR"]) / filename
     f.save(dest)
 
-        g.room.filmtv_source_type = "upload"
+    g.room.filmtv_source_type = "upload"
     g.room.filmtv_source = str(dest)
     g.room.filmtv_title = (request.form.get("title") or original)[:256]
     g.room.filmtv_playing = False
