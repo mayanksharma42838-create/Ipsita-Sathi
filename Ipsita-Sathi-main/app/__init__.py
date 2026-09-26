@@ -1,3 +1,4 @@
+import os
 from flask import Flask, render_template
 from flask_cors import CORS
 
@@ -99,8 +100,6 @@ def _ensure_schema_patches() -> None:
     except Exception:
         db.session.rollback()
 
-    # V-02: session_token must be nullable so logout can revoke (NULL = dead token).
-    # SQLite cannot ALTER COLUMN nullability — rebuild members if still NOT NULL.
     try:
         info = db.session.execute(text("PRAGMA table_info(members)")).fetchall()
         tok_col = next((r for r in info if r[1] == "session_token"), None)
@@ -164,7 +163,7 @@ def _start_expiry_sweeper(app: Flask) -> None:
                         continue
                     by_room: dict[str, list[int]] = {}
                     for msg in expired:
-                        socketio.sleep(0.01)  # Yield to eventlet greenlet pool
+                        socketio.sleep(0.01)
                         msg.deleted = True
                         if msg.media_path:
                             try:
