@@ -35,12 +35,26 @@ const App = (() => {
   async function api(path, opts = {}) {
     const res = await fetch(path, {
       ...opts,
+      credentials: "include", // Essential for maintaining session cookies with backend
       headers: { ...headers(!(opts.body instanceof FormData)), ...(opts.headers || {}) },
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+
+    let data;
+    try {
+      data = await res.json();
+    } catch {
+      data = {};
+    }
+
+    if (!res.ok) {
+      // Graceful error payload mapping instead of unhandled crash
+      const errorMsg = data.error || `Request failed (${res.status})`;
+      throw new Error(errorMsg);
+    }
     return data;
   }
+
+
 
   function showAuthError(msg) {
     const el = $("#authError");
@@ -817,8 +831,12 @@ const App = (() => {
       ph.textContent = "Blocked non-Instagram URL";
       return;
     }
+
+    // Ensure sandbox has no allow-same-origin if allow-scripts is present
+    frame.setAttribute("sandbox", "allow-scripts allow-popups allow-forms");
     frame.src = embed;
     ph.style.display = "none";
+
   }
 
   async function syncInstagram() {
@@ -1032,11 +1050,13 @@ const App = (() => {
     try {
       const res = await fetch("/api/auth/session-check", {
         headers: { "X-Session-Token": s.token },
+        credentials: "include"
       });
       if (!res.ok) {
         OfflineStore.clearSession();
         return;
       }
+
       const data = await res.json();
       const password = prompt("Enter room password to unlock encrypted messages:");
       if (!password) return;
