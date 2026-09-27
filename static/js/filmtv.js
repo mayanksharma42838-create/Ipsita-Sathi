@@ -87,15 +87,21 @@ const FilmTV = (() => {
     const titleEl = document.getElementById("filmtvTitle");
     if (titleEl) titleEl.textContent = state.title || "Shared Workspace";
 
-    // Manage container visibility
+    // STEP 1: Force visibility of the main containers immediately
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
-    if (containerEl) containerEl.style.display = "block";
+
+    // containerEl is the #filmtvIframeContainer from init
+    if (containerEl) {
+      containerEl.style.display = "block";
+    }
 
     const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
     const isVideo = videoExts.test(state.source) || (state.source_type === "upload" && videoExts.test(state.source));
 
+    // STEP 2: Handle rendering based on content type
     if (isVideo) {
+      // Hide Iframe, Show Video
       if (iframeEl) iframeEl.style.display = "none";
       if (videoEl) {
         videoEl.style.display = "block";
@@ -119,28 +125,26 @@ const FilmTV = (() => {
         applyingRemote = false;
       }
     } else {
-      // Show Iframe
+      // Hide Video, Show Iframe
       if (videoEl) {
         videoEl.pause();
         videoEl.style.display = "none";
       }
       if (iframeEl) {
+        // Iframe must be display:block for browser to render correctly
         iframeEl.style.display = "block";
 
         let displaySource = state.source;
 
-        // Handle uploaded documents via Google/Microsoft viewers if needed, 
-        // or just direct iframe if the browser supports it (PDF/TXT)
         if (state.source_type === "upload") {
           const streamUrl = window.location.origin + "/api/filmtv/stream";
           if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(state.source)) {
-            // Office docs usually need a viewer
             displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
           } else {
             displaySource = streamUrl;
           }
         } else {
-          // YouTube watch/embed transformations
+          // YouTube Transform
           if (displaySource.includes("youtube.com/watch?v=")) {
             displaySource = displaySource.replace("watch?v=", "embed/");
           } else if (displaySource.includes("youtu.be/")) {
@@ -165,6 +169,7 @@ const FilmTV = (() => {
     if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
   }
+
 
 
 

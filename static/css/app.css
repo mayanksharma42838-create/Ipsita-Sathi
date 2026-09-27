@@ -640,22 +640,38 @@ body.filmtv-open #messages {
 .filmtv-player-wrap {
   position: relative;
   flex: 1;
-  min-height: 220px;
+  min-height: 320px;
   border-radius: 16px;
   overflow: hidden;
   background: #000;
   border: 1px solid rgba(255, 158, 181, 0.15);
+  display: flex;
+  flex-direction: column;
 }
 
 #filmtvVideo {
   width: 100%;
   height: 100%;
-  min-height: 220px;
-  max-height: min(58vh, 520px);
+  flex: 1;
   object-fit: contain;
   background: #000;
+}
+
+#filmtvIframeContainer {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  display: none;
+  background: #000;
+}
+
+#filmtvIframeContainer iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
   display: block;
 }
+
 
 .filmtv-empty {
   position: absolute;
