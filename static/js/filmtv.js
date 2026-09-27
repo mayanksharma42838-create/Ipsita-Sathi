@@ -35,10 +35,9 @@ const FilmTV = (() => {
     if (!iframeEl && containerEl) {
       iframeEl = document.createElement("iframe");
       iframeEl.className = "filmtv-iframe";
-      iframeEl.style.width = "100%";
-      iframeEl.style.height = "100%";
-      iframeEl.style.border = "none";
       iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads");
+      iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+      iframeEl.style.cssText = "width:100%; height:100%; border:none; display:none;";
 
       iframeEl.onload = () => {
         try {
@@ -54,6 +53,7 @@ const FilmTV = (() => {
       containerEl.appendChild(iframeEl);
     }
   }
+
 
   function setSocket(sock) {
     socket = sock;
@@ -87,33 +87,27 @@ const FilmTV = (() => {
     const titleEl = document.getElementById("filmtvTitle");
     if (titleEl) titleEl.textContent = state.title || "Shared Workspace";
 
+    // Manage container visibility
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
+    if (containerEl) containerEl.style.display = "block";
 
-    const container = document.getElementById("filmtvIframeContainer") || containerEl;
-    if (container) container.style.display = "block";
-
-    // Check if source is a direct video file or uploaded media with video extension
     const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
-    const docExts = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt)$/i;
+    const isVideo = videoExts.test(state.source) || (state.source_type === "upload" && videoExts.test(state.source));
 
-    const isVideoFile = videoExts.test(state.source);
-    const isDocFile = docExts.test(state.source);
-    const isUpload = state.source_type === "upload";
-
-    if (isUpload && isVideoFile) {
+    if (isVideo) {
       if (iframeEl) iframeEl.style.display = "none";
       if (videoEl) {
         videoEl.style.display = "block";
-        const src = "/api/filmtv/stream";
+        const src = state.source_type === "upload" ? "/api/filmtv/stream" : state.source;
 
-        if (videoEl.src !== src && videoEl.src.indexOf(src) === -1) {
+        if (videoEl.src !== src && !videoEl.src.endsWith(src)) {
           videoEl.src = src;
           videoEl.load();
         }
 
         applyingRemote = true;
-        if (Math.abs(videoEl.currentTime - (state.position || 0)) > 1.0) {
+        if (Math.abs(videoEl.currentTime - (state.position || 0)) > 1.5) {
           videoEl.currentTime = state.position || 0;
         }
 
@@ -125,7 +119,7 @@ const FilmTV = (() => {
         applyingRemote = false;
       }
     } else {
-      // Handles Streaming platforms, Documents (PDF, Office) and general URLs
+      // Show Iframe
       if (videoEl) {
         videoEl.pause();
         videoEl.style.display = "none";
@@ -137,9 +131,9 @@ const FilmTV = (() => {
 
         // Handle uploaded documents via Google/Microsoft viewers if needed, 
         // or just direct iframe if the browser supports it (PDF/TXT)
-        if (isUpload) {
+        if (state.source_type === "upload") {
           const streamUrl = window.location.origin + "/api/filmtv/stream";
-          if (isDocFile && !/\.pdf$/i.test(state.source)) {
+          if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(state.source)) {
             // Office docs usually need a viewer
             displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
           } else {
@@ -171,6 +165,7 @@ const FilmTV = (() => {
     if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
   }
+
 
 
   function clearPlayer() {
