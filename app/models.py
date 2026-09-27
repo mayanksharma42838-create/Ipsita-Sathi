@@ -44,7 +44,7 @@ class Room(db.Model):
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
-        def filmtv_state(self) -> dict:
+            def filmtv_state(self) -> dict:
         """Playback snapshot with lag-compensated position estimate."""
         pos = float(self.filmtv_position or 0.0)
         if self.filmtv_playing and self.filmtv_updated_at:
@@ -69,6 +69,7 @@ class Room(db.Model):
             "updated_at": self.filmtv_updated_at.isoformat() if self.filmtv_updated_at else None,
             "server_time": utcnow().isoformat(),
         }
+
 
 
 
