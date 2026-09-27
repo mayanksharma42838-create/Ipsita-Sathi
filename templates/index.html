@@ -14,7 +14,27 @@
     href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Nunito:wght@400;600;700&display=swap"
     rel="stylesheet" />
   <link rel="stylesheet" href="/static/css/app.css?v=2.1" />
+  <style>
+    /* Custom inline style for adjustable resizable panes in FilmTV mode */
+    #roomSplit {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
 
+    #filmtvStage {
+      resize: horizontal;
+      overflow: auto;
+      min-width: 300px;
+      max-width: 80vw;
+    }
+
+    #appMain {
+      flex: 1;
+      min-width: 300px;
+    }
+  </style>
 </head>
 
 <body>
@@ -80,7 +100,7 @@
       </div>
 
       <div id="roomSplit">
-        <!-- FilmTV Watch Party stage -->
+        <!-- FilmTV Watch Party stage with resizable support -->
         <section id="filmtvStage" class="filmtv-stage" aria-label="FilmTV Watch Party">
           <header class="filmtv-header">
             <div>
@@ -173,19 +193,30 @@
     </div>
   </div>
 
-  <!-- Theme -->
+  <!-- Theme with Extended Color Options -->
   <div class="overlay" id="themeModal">
     <div class="modal">
-      <h3>Theme</h3>
+      <h3>Theme & Color Options</h3>
       <div class="theme-grid">
-        <div class="theme-swatch active" data-theme="blush" style="background:linear-gradient(135deg,#3a1528,#ff4d7a);">
-        </div>
-        <div class="theme-swatch" data-theme="midnight" style="background:linear-gradient(135deg,#1a2040,#7aa2ff);">
-        </div>
-        <div class="theme-swatch" data-theme="forest" style="background:linear-gradient(135deg,#1a3324,#6bcb77);"></div>
-        <div class="theme-swatch" data-theme="sand" style="background:linear-gradient(135deg,#3d3224,#e8b86d);"></div>
-        <div class="theme-swatch" data-theme="lavender" style="background:linear-gradient(135deg,#2a1a40,#c9a0ff);">
-        </div>
+        <div class="theme-swatch active" data-theme="blush" style="background:linear-gradient(135deg,#3a1528,#ff4d7a);"
+          title="Blush"></div>
+        <div class="theme-swatch" data-theme="midnight" style="background:linear-gradient(135deg,#1a2040,#7aa2ff);"
+          title="Midnight"></div>
+        <div class="theme-swatch" data-theme="forest" style="background:linear-gradient(135deg,#1a3324,#6bcb77);"
+          title="Forest"></div>
+        <div class="theme-swatch" data-theme="sand" style="background:linear-gradient(135deg,#3d3224,#e8b86d);"
+          title="Sand"></div>
+        <div class="theme-swatch" data-theme="lavender" style="background:linear-gradient(135deg,#2a1a40,#c9a0ff);"
+          title="Lavender"></div>
+        <!-- New Color Options Added -->
+        <div class="theme-swatch" data-theme="crimson" style="background:linear-gradient(135deg,#401a1a,#ff6b6b);"
+          title="Crimson Red"></div>
+        <div class="theme-swatch" data-theme="ocean" style="background:linear-gradient(135deg,#1a3a40,#4dc9ff);"
+          title="Ocean Blue"></div>
+        <div class="theme-swatch" data-theme="emerald" style="background:linear-gradient(135deg,#1a4031,#38ef7d);"
+          title="Emerald Glow"></div>
+        <div class="theme-swatch" data-theme="cyberpunk" style="background:linear-gradient(135deg,#2d1a40,#f35588);"
+          title="Cyberpunk Neon"></div>
       </div>
       <label style="margin-top:14px;">Upload from gallery</label>
       <input type="file" id="themeFile" accept="image/*" />
@@ -243,7 +274,6 @@
         <div id="igPlaceholder">No URL synced yet</div>
         <iframe id="igFrame" title="Instagram sync" sandbox="allow-scripts allow-popups allow-forms"
           referrerpolicy="no-referrer" loading="lazy"></iframe>
-
       </div>
       <label style="margin-top:12px;">Encrypted session note (optional)</label>
       <textarea id="igSession" rows="3"
@@ -286,7 +316,7 @@
     </div>
   </div>
 
-  <!-- Stable cdnjs Socket.IO Client (Matches server protocol perfectly) -->
+  <!-- Stable cdnjs Socket.IO Client -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
   <script src="/static/js/crypto.js?v=2.1"></script>
   <script src="/static/js/offline.js?v=2.1"></script>

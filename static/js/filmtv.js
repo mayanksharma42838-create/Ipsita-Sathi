@@ -1,5 +1,5 @@
 /**
- * Shared interactive workspace / iframe viewer with detailed console diagnostics.
+ * Shared interactive workspace / iframe viewer - Synchronized with index.html IDs.
  */
 const FilmTV = (() => {
   let containerEl = null;
@@ -11,21 +11,14 @@ const FilmTV = (() => {
   let isHost = false;
 
   function init({ container, socket: sock, tokenFn }) {
-    console.log("🟢 [FilmTV Diagnostics] Initializing module...", { container, sock });
+    console.log("🟢 [FilmTV] Initializing module with index.html sync...");
     containerEl = container;
     socket = sock;
     getToken = tokenFn;
 
-    if (!containerEl) {
-      console.error("❌ [FilmTV Critical] Container element is missing during initialization!");
-    }
-
     if (!videoEl) {
       videoEl = document.getElementById("filmtvVideo");
-      if (!videoEl) {
-        console.warn("⚠️ [FilmTV Warning] #filmtvVideo element not found in DOM.");
-      } else {
-        console.log("✅ [FilmTV Diagnostics] #filmtvVideo element found.");
+      if (videoEl) {
         videoEl.addEventListener("play", () => {
           if (!applyingRemote && isHost) emitControl("play");
         });
@@ -43,24 +36,8 @@ const FilmTV = (() => {
       iframeEl.className = "filmtv-iframe";
       iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-same-origin");
       iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-      iframeEl.style.cssText = "width:100%; height:100%; border:none; display:none;";
-
-      iframeEl.onload = () => {
-        console.log("🌐 [FilmTV Diagnostics] Iframe loaded source successfully.");
-        try {
-          const doc = iframeEl.contentWindow.document;
-          doc.addEventListener("scroll", () => {
-            if (!applyingRemote && isHost) {
-              emitControl("scroll", { scroll_top: doc.documentElement.scrollTop });
-            }
-          });
-        } catch (e) {
-          console.log("ℹ️ [FilmTV Info] Cross-origin restrictions apply to iframe (normal for external embeds like YouTube).");
-        }
-      };
-
+      iframeEl.style.cssText = "width:100%; height:100%; border:none; display:block;";
       containerEl.appendChild(iframeEl);
-      console.log("✅ [FilmTV Diagnostics] Dynamic iframe created and appended.");
     }
 
     setupShareHandlers();
@@ -68,12 +45,10 @@ const FilmTV = (() => {
 
   function setSocket(sock) {
     socket = sock;
-    console.log("🔌 [FilmTV Diagnostics] Socket updated:", socket ? "Active" : "Null");
   }
 
   function emitControl(action, extra = {}) {
     if (applyingRemote || !socket || !isHost) return;
-    console.log(`📤 [FilmTV Diagnostics] Emitting action: ${action}`, extra);
     socket.emit("filmtv_control", {
       token: getToken(),
       action,
@@ -83,40 +58,33 @@ const FilmTV = (() => {
   }
 
   function updateStatusBadge(status) {
-    const badge = document.getElementById("filmtvStatusBadge");
+    // Synchronized with #filmtvSyncBadge in index.html
+    const badge = document.getElementById("filmtvSyncBadge") || document.getElementById("filmtvStatusBadge");
     if (badge) {
       badge.textContent = status;
       badge.setAttribute("data-status", status);
-    } else {
-      console.warn("⚠️ [FilmTV Warning] #filmtvStatusBadge element not found.");
     }
   }
 
   function setupShareHandlers() {
-    const shareBtn = document.getElementById("filmtvShareBtn");
-    const inputEl = document.getElementById("filmtvInput");
+    // Synchronized with #btnFilmTVLoad and #filmtvUrl in index.html
+    const shareBtn = document.getElementById("btnFilmTVLoad") || document.getElementById("filmtvShareBtn");
+    const inputEl = document.getElementById("filmtvUrl") || document.getElementById("filmtvInput");
+    const clearBtn = document.getElementById("btnFilmTVClear");
 
-    console.log("🔍 [FilmTV Diagnostics] Checking Share Elements -> ShareBtn:", shareBtn, "| InputEl:", inputEl);
+    console.log("🔍 [FilmTV] Binding elements -> ShareBtn:", shareBtn, "| InputEl:", inputEl);
 
-    if (!shareBtn || !inputEl) {
-      console.error("❌ [FilmTV Critical Error] #filmtvShareBtn or #filmtvInput is missing from HTML!");
-      return;
-    }
-
-    if (!shareBtn.dataset.bound) {
+    if (shareBtn && inputEl && !shareBtn.dataset.bound) {
       shareBtn.dataset.bound = "true";
       shareBtn.addEventListener("click", async () => {
         const val = inputEl.value.trim();
-        console.log("🖱️ [FilmTV Diagnostics] Share button clicked. Input value:", val);
-
         if (!val) {
-          alert("Please enter a valid URL or select a file.");
-          console.warn("⚠️ [FilmTV Warning] User tried to share an empty input box.");
+          alert("Please enter a valid URL.");
           return;
         }
 
         try {
-          console.log("🌐 [FilmTV Diagnostics] Sending POST to /api/filmtv/source...");
+          console.log("📤 [FilmTV] Sharing URL source:", val);
           const res = await fetch("/api/filmtv/source", {
             method: "POST",
             headers: {
@@ -125,45 +93,56 @@ const FilmTV = (() => {
             },
             body: JSON.stringify({ source: val, source_type: "url" })
           });
-
           const data = await res.json();
-          console.log(`📥 [FilmTV Diagnostics] Response status: ${res.status}`, data);
-
           if (!res.ok) {
-            console.error("❌ [FilmTV API Error]", data.error || "Failed to share source");
             alert(data.error || "Failed to share source");
           } else {
-            console.log("✨ [FilmTV Diagnostics] Source shared successfully!");
             inputEl.value = "";
           }
         } catch (err) {
-          console.error("🔥 [FilmTV Fetch Exception] Network or script error during share:", err);
+          console.error("❌ [FilmTV] Share error:", err);
         }
       });
-      console.log("✅ [FilmTV Diagnostics] Share button event listener attached.");
+    }
+
+    if (clearBtn && !clearBtn.dataset.bound) {
+      clearBtn.dataset.bound = "true";
+      clearBtn.addEventListener("click", async () => {
+        try {
+          await fetch("/api/filmtv/clear", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Session-Token": getToken() || ""
+            }
+          });
+          clearPlayer();
+        } catch (err) {
+          console.error("❌ [FilmTV] Clear error:", err);
+        }
+      });
     }
   }
 
   async function loadState(state, memberId) {
-    console.log("📥 [FilmTV Diagnostics] loadState called with payload:", state, "MemberID:", memberId);
-
+    console.log("📥 [FilmTV] loadState received:", state);
     if (!state || (!state.stream_url && !state.source)) {
-      console.warn("⚠️ [FilmTV Warning] State or stream_url/source is missing. Clearing player.");
       clearPlayer();
       return;
     }
 
     isHost = state.host_id === memberId;
     const titleEl = document.getElementById("filmtvTitle");
-    if (titleEl) titleEl.textContent = state.title || "Shared Workspace";
+    if (titleEl) titleEl.textContent = state.title || "FilmTV Watch Party";
 
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
-    if (containerEl) containerEl.style.display = "block";
+
+    const targetContainer = document.getElementById("filmtvIframeContainer") || containerEl;
+    if (targetContainer) targetContainer.style.display = "block";
 
     const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)(\?.*)?$/i;
     const isVideo = videoExts.test(state.source || "") && state.source_type === "upload";
-    console.log("🔎 [FilmTV Diagnostics] Is video file upload?", isVideo);
 
     if (isVideo) {
       if (iframeEl) iframeEl.style.display = "none";
@@ -173,7 +152,6 @@ const FilmTV = (() => {
         const src = state.stream_url + tokenStr;
 
         if (!videoEl.src.includes(state.stream_url)) {
-          console.log("🎬 [FilmTV Diagnostics] Setting video source:", src);
           videoEl.src = src;
           videoEl.load();
         }
@@ -184,7 +162,7 @@ const FilmTV = (() => {
         }
 
         if (state.playing) {
-          videoEl.play().catch((err) => { console.error("❌ [FilmTV Video Play Error]", err); });
+          videoEl.play().catch(() => { });
         } else {
           videoEl.pause();
         }
@@ -210,14 +188,13 @@ const FilmTV = (() => {
           }
         } else {
           let rawUrl = (state.source || state.stream_url || "").trim();
-          console.log("🔗 [FilmTV Diagnostics] Raw URL received for iframe:", rawUrl);
 
           if (rawUrl.includes("youtube.com/watch?v=")) {
             try {
               const urlObj = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
               const videoId = urlObj.searchParams.get("v");
               if (videoId) {
-                displaySource = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
+                displaySource = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
               }
             } catch (e) {
               displaySource = rawUrl.replace("watch?v=", "embed/");
@@ -226,7 +203,7 @@ const FilmTV = (() => {
             const parts = rawUrl.split("youtu.be/");
             if (parts[1]) {
               const videoId = parts[1].split("?")[0];
-              displaySource = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
+              displaySource = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
             }
           } else if (rawUrl.includes("youtube.com/embed/")) {
             displaySource = rawUrl;
@@ -235,27 +212,18 @@ const FilmTV = (() => {
           }
         }
 
-        console.log("📺 [FilmTV Diagnostics] Final iframe displaySource:", displaySource);
+        console.log("📺 [FilmTV] Final rendered iframe source:", displaySource);
         if (iframeEl.src !== displaySource) {
           iframeEl.src = displaySource;
         }
-
-        applyingRemote = true;
-        try {
-          if (state.scroll_top !== undefined && iframeEl.contentWindow) {
-            iframeEl.contentWindow.scrollTo(0, state.scroll_top);
-          }
-        } catch (e) { }
-        applyingRemote = false;
       }
     }
 
     if (videoEl) videoEl.controls = isHost;
-    updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
+    updateStatusBadge(isHost ? "♡ hosting (synced)" : "♡ watching (synced)");
   }
 
   function clearPlayer() {
-    console.log("🧹 [FilmTV Diagnostics] Clearing player state.");
     if (iframeEl) iframeEl.removeAttribute("src");
     if (videoEl) {
       videoEl.pause();
@@ -267,15 +235,14 @@ const FilmTV = (() => {
     if (container) container.style.display = "none";
 
     const title = document.getElementById("filmtvTitle");
-    if (title) title.textContent = "Shared Workspace";
+    if (title) title.textContent = "FilmTV Watch Party";
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "flex";
 
-    updateStatusBadge("clear");
+    updateStatusBadge("♡ ready");
   }
 
   async function applyRemoteControl(payload) {
-    console.log("⚡ [FilmTV Diagnostics] Socket remote control event received:", payload);
     if (!payload || !payload.state) return;
     const { action, state } = payload;
 
