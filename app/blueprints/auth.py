@@ -208,12 +208,13 @@ def _may_resume_or_reclaim(member: Member, resume_token: str | None, idle_sec: i
     if resume_token and resume_token == member.session_token:
         return True
     
-        # 2. Offline / Idle reclaim
+            # 2. Offline / Idle reclaim
     # V-01/V-14 fix: Only allow reclaim if the member is not actively online via socket
     if not member.is_online:
         return True
 
     return False
+
 
 
 
@@ -283,9 +284,10 @@ def logout():
 
 @bp.get("/session-check")
 def session_check():
+    # Attempt to authenticate via token or cookie
     member = get_member_from_request()
     if not member:
-        return jsonify({"authenticated": False}), 401
+        return jsonify({"authenticated": False, "error": "No active session found"}), 401
     return jsonify({
         "authenticated": True,
         "member_id": member.id,

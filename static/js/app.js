@@ -1060,6 +1060,7 @@ const App = (() => {
       const data = await res.json();
       const password = prompt("Enter room password to unlock encrypted messages:");
       if (!password) return;
+
       state.token = data.session_token;
       state.memberId = data.member_id;
       state.displayName = data.display_name;
