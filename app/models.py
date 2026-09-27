@@ -25,8 +25,9 @@ class Room(db.Model):
     instagram_session_enc = db.Column(db.Text, nullable=True)
     instagram_sync_url = db.Column(db.String(1024), nullable=True)
     doodle_path = db.Column(db.String(512), nullable=True)
-    # FilmTV watch party state
-    filmtv_source_type = db.Column(db.String(32), nullable=True)  # url|upload (native only)
+    
+    # FilmTV watch party state columns
+    filmtv_source_type = db.Column(db.String(32), nullable=True)
     filmtv_source = db.Column(db.String(2048), nullable=True)
     filmtv_title = db.Column(db.String(256), nullable=True)
     filmtv_playing = db.Column(db.Boolean, default=False, nullable=False)
@@ -45,7 +46,6 @@ class Room(db.Model):
         return check_password_hash(self.password_hash, password)
 
     def filmtv_state(self) -> dict:
-        """Playback snapshot with lag-compensated position estimate."""
         pos = float(self.filmtv_position or 0.0)
         if self.filmtv_playing and self.filmtv_updated_at:
             ref = self.filmtv_updated_at
@@ -92,10 +92,9 @@ class Message(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     room_pk = db.Column(db.Integer, db.ForeignKey("rooms.id"), nullable=False, index=True)
     sender_id = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=False)
-    # ciphertext only — never store plaintext
     ciphertext = db.Column(db.Text, nullable=False)
-    msg_type = db.Column(db.String(32), nullable=False, default="text")  # text|image|voice|system
-    media_path = db.Column(db.String(512), nullable=True)  # encrypted file path if any
+    msg_type = db.Column(db.String(32), nullable=False, default="text")
+    media_path = db.Column(db.String(512), nullable=True)
     media_mime = db.Column(db.String(128), nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False, index=True)
     expires_at = db.Column(db.DateTime, nullable=True, index=True)
@@ -103,11 +102,3 @@ class Message(db.Model):
 
     room = db.relationship("Room", back_populates="messages")
     sender = db.relationship("Member")
-
-    def is_expired(self) -> bool:
-        if self.expires_at is None:
-            return False
-        exp = self.expires_at
-        if exp.tzinfo is None:
-            exp = exp.replace(tzinfo=timezone.utc)
-        return utcnow() >= exp
