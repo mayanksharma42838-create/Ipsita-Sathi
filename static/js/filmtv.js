@@ -35,7 +35,8 @@ const FilmTV = (() => {
     if (!iframeEl && containerEl) {
       iframeEl = document.createElement("iframe");
       iframeEl.className = "filmtv-iframe";
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads");
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads");
+
       iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
       iframeEl.style.cssText = "width:100%; height:100%; border:none; display:none;";
 
