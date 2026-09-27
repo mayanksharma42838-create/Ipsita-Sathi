@@ -1,11 +1,14 @@
-"""Room create / join — exactly 2 members; hardened sessions."""
+"""Room create / join — exactly 2 members; hardened sessions (Production Ready)."""
 
 from __future__ import annotations
 
+import base64
+import secrets
 import threading
 from datetime import timedelta, timezone
 
 from flask import Blueprint, current_app, jsonify, request, session
+from sqlalchemy import text
 
 from app.auth_helpers import get_member_from_request, login_required, room_member_count
 from app.crypto_utils import generate_member_token
@@ -20,9 +23,7 @@ _join_guard = threading.Lock()
 
 
 def _begin_immediate() -> None:
-    """SQLite write lock — serialize room membership changes (V-14)."""
-    from sqlalchemy import text
-
+    """SQLite write lock — serialize room membership changes to prevent race conditions."""
     try:
         db.session.execute(text("BEGIN IMMEDIATE"))
     except Exception:
@@ -41,12 +42,13 @@ def create_room():
     password = data.get("password") or ""
     display_name = sanitize_display_name(data.get("display_name") or "Partner 1")
 
+    # Input Validation
     if not room_id or len(room_id) < 4 or len(room_id) > 64:
         return jsonify({"error": "Room ID must be 4–64 characters"}), 400
     if not all(c.isalnum() or c in "-_" for c in room_id):
         return jsonify({"error": "Room ID may only contain letters, numbers, - and _"}), 400
     if not display_name:
-        return jsonify({"error": "Display name invalid (no HTML/special control chars)"}), 400
+        return jsonify({"error": "Display name invalid"}), 400
 
     pw_err = validate_password(password, current_app.config["MIN_PASSWORD_LENGTH"])
     if pw_err:
@@ -55,24 +57,18 @@ def create_room():
     with _join_guard:
         _begin_immediate()
         try:
-            existing_room = Room.query.filter_by(room_id=room_id).first()
+            existing_room = Room.query.filter_by(room_id=room_id).with_for_update().first()
+            
+            # Strict separation: /create-room should not silently swallow and route to join.
+            # If the room exists, inform the client to use /join-room instead.
             if existing_room:
                 db.session.rollback()
-                return jsonify({"error": "Unable to create room with that ID"}), 409
+                return jsonify({"error": "Room ID already exists. Please use Join Room."}), 409
 
-                        # Generate secure random salt for E2E
-            import secrets
             random_salt = secrets.token_bytes(16)
-
             room = Room(
                 room_id=room_id,
                 salt=random_salt,
-                filmtv_source_type=None,
-                filmtv_source=None,
-                filmtv_title=None,
-                filmtv_playing=False,
-                filmtv_position=0.0,
-                filmtv_scroll_top=0,
                 theme_opacity=0.92,
             )
             room.set_password(password)
@@ -90,24 +86,20 @@ def create_room():
             db.session.add(member)
             db.session.commit()
         except Exception:
-            import traceback
-            traceback.print_exc()
             db.session.rollback()
-            return jsonify({"error": "Internal server error during room creation"}), 500
+            return jsonify({"error": "Server error during room creation"}), 500
 
     session["member_token"] = token
-    import base64
-    return jsonify(
-        {
-            "ok": True,
-            "room_id": room.room_id,
-            "member_id": member.id,
-            "display_name": member.display_name,
-            "session_token": token,
-            "salt": base64.b64encode(room.salt).decode("utf-8"),
-            "slots_left": current_app.config["MAX_ROOM_MEMBERS"] - 1,
-        }
-    )
+    max_members = current_app.config.get("MAX_ROOM_MEMBERS", 2)
+    return jsonify({
+        "ok": True,
+        "room_id": room.room_id,
+        "member_id": member.id,
+        "display_name": member.display_name,
+        "session_token": token,
+        "salt": base64.b64encode(room.salt).decode("utf-8"),
+        "slots_left": max_members - 1,
+    })
 
 
 @bp.post("/join-room")
@@ -146,39 +138,35 @@ def join_room():
                 .with_for_update()
                 .first()
             )
+            
             if existing:
                 if not _may_resume_or_reclaim(existing, resume_token, idle_sec):
                     db.session.rollback()
-                    return (
-                        jsonify(
-                            {
-                                "error": "Seat occupied. Use resume_token from this device, wait for idle timeout, or pick another display name.",
-                            }
-                        ),
-                        403,
-                    )
-                # Rotate token — invalidates any stolen/old token immediately (V-01)
+                    return jsonify({
+                        "error": "Seat occupied. Use resume_token from this device, wait for idle timeout, or pick another display name."
+                    }), 403
+
+                # Rotate session token for security
                 existing.session_token = generate_member_token()
                 existing.is_online = True
                 existing.last_seen = utcnow()
                 db.session.commit()
+                
                 session["member_token"] = existing.session_token
+                
                 from app import sockets as socket_mod
-
                 socket_mod.disconnect_member(existing.id)
-                import base64
-                return jsonify(
-                    {
-                        "ok": True,
-                        "room_id": room.room_id,
-                        "member_id": existing.id,
-                        "display_name": existing.display_name,
-                        "session_token": existing.session_token,
-                        "salt": base64.b64encode(room.salt).decode("utf-8"),
-                        "slots_left": max(0, max_members - count),
-                        "rejoined": True,
-                    }
-                )
+
+                return jsonify({
+                    "ok": True,
+                    "room_id": room.room_id,
+                    "member_id": existing.id,
+                    "display_name": existing.display_name,
+                    "session_token": existing.session_token,
+                    "salt": base64.b64encode(room.salt).decode("utf-8"),
+                    "slots_left": max(0, max_members - count),
+                    "rejoined": True,
+                })
 
             if count >= max_members:
                 db.session.rollback()
@@ -193,42 +181,35 @@ def join_room():
                 last_seen=utcnow(),
             )
             db.session.add(member)
-            try:
-                db.session.commit()
-            except Exception:
-                db.session.rollback()
-                return jsonify({"error": "Could not join — try a different display name"}), 409
+            db.session.commit()
+
         except Exception:
             db.session.rollback()
-            raise
+            return jsonify({"error": "Could not join room — try a different display name or try again later"}), 409
 
     session["member_token"] = token
-    import base64
-    return jsonify(
-        {
-            "ok": True,
-            "room_id": room.room_id,
-            "member_id": member.id,
-            "display_name": member.display_name,
-            "session_token": token,
-            "salt": base64.b64encode(room.salt).decode("utf-8"),
-            "slots_left": max_members - count - 1,
-        }
-    )
+    return jsonify({
+        "ok": True,
+        "room_id": room.room_id,
+        "member_id": member.id,
+        "display_name": member.display_name,
+        "session_token": token,
+        "salt": base64.b64encode(room.salt).decode("utf-8"),
+        "slots_left": max(0, max_members - count - 1),
+    })
 
 
 def _may_resume_or_reclaim(member: Member, resume_token: str | None, idle_sec: int) -> bool:
-    """Allow seat reclaim if token matches or if the member is currently offline."""
+    """Allow seat reclaim securely with token validation or strict idle timeout thresholds."""
     if not member.session_token:
         return True
     
-    # 1. Device-bound session resume
+    # 1. Device-bound session resume match
     if resume_token and resume_token == member.session_token:
         return True
     
-    # 2. Reclaim if the member is not actively online (V-01/V-14 fix)
-    # This ensures partners aren't locked out if they clear cache/switch devices,
-    # but prevents active session hijacking.
+        # 2. Offline / Idle reclaim
+    # V-01/V-14 fix: Only allow reclaim if the member is not actively online via socket
     if not member.is_online:
         return True
 
@@ -250,18 +231,16 @@ def me():
         }
         for m in room.members
     ]
-    return jsonify(
-        {
-            "member_id": g.member.id,
-            "display_name": g.member.display_name,
-            "room_id": room.room_id,
-            "theme_preset": room.theme_preset,
-            "theme_path": room.theme_path,
-            "members": members,
-            "instagram_sync_url": room.instagram_sync_url,
-            "filmtv": room.filmtv_state(),
-        }
-    )
+    return jsonify({
+        "member_id": g.member.id,
+        "display_name": g.member.display_name,
+        "room_id": room.room_id,
+        "theme_preset": room.theme_preset,
+        "theme_path": room.theme_path,
+        "members": members,
+        "instagram_sync_url": room.instagram_sync_url,
+        "filmtv": room.filmtv_state(),
+    })
 
 
 @bp.post("/display-name")
@@ -291,7 +270,6 @@ def update_display_name():
 @login_required
 def logout():
     from flask import g
-
     from app import sockets as socket_mod
 
     g.member.is_online = False
@@ -308,12 +286,10 @@ def session_check():
     member = get_member_from_request()
     if not member:
         return jsonify({"authenticated": False}), 401
-    return jsonify(
-        {
-            "authenticated": True,
-            "member_id": member.id,
-            "display_name": member.display_name,
-            "room_id": member.room.room_id,
-            "session_token": member.session_token,
-        }
-    )
+    return jsonify({
+        "authenticated": True,
+        "member_id": member.id,
+        "display_name": member.display_name,
+        "room_id": member.room.room_id,
+        "session_token": member.session_token,
+    })
