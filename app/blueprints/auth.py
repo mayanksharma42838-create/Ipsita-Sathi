@@ -27,7 +27,6 @@ def _begin_immediate() -> None:
     try:
         db.session.execute(text("BEGIN IMMEDIATE"))
     except Exception:
-        # Non-SQLite or already in a transaction — continue under thread lock
         pass
 
 
@@ -42,7 +41,6 @@ def create_room():
     password = data.get("password") or ""
     display_name = sanitize_display_name(data.get("display_name") or "Partner 1")
 
-    # Input Validation
     if not room_id or len(room_id) < 4 or len(room_id) > 64:
         return jsonify({"error": "Room ID must be 4–64 characters"}), 400
     if not all(c.isalnum() or c in "-_" for c in room_id):
@@ -58,9 +56,6 @@ def create_room():
         _begin_immediate()
         try:
             existing_room = Room.query.filter_by(room_id=room_id).with_for_update().first()
-            
-            # Strict separation: /create-room should not silently swallow and route to join.
-            # If the room exists, inform the client to use /join-room instead.
             if existing_room:
                 db.session.rollback()
                 return jsonify({"error": "Room ID already exists. Please use Join Room."}), 409
@@ -120,11 +115,7 @@ def join_room():
     with _join_guard:
         _begin_immediate()
         try:
-            room = (
-                Room.query.filter_by(room_id=room_id)
-                .with_for_update()
-                .first()
-            )
+            room = Room.query.filter_by(room_id=room_id).with_for_update().first()
             if not room or not room.check_password(password):
                 db.session.rollback()
                 return jsonify({"error": _GENERIC_AUTH_FAIL}), 403
@@ -133,11 +124,7 @@ def join_room():
             idle_sec = current_app.config["SESSION_IDLE_RESUME_SECONDS"]
             count = room_member_count(room)
 
-            existing = (
-                Member.query.filter_by(room_pk=room.id, display_name=display_name)
-                .with_for_update()
-                .first()
-            )
+            existing = Member.query.filter_by(room_pk=room.id, display_name=display_name).with_for_update().first()
             
             if existing:
                 if not _may_resume_or_reclaim(existing, resume_token, idle_sec):
@@ -146,7 +133,6 @@ def join_room():
                         "error": "Seat occupied. Use resume_token from this device, wait for idle timeout, or pick another display name."
                     }), 403
 
-                # Rotate session token for security
                 existing.session_token = generate_member_token()
                 existing.is_online = True
                 existing.last_seen = utcnow()
@@ -200,22 +186,13 @@ def join_room():
 
 
 def _may_resume_or_reclaim(member: Member, resume_token: str | None, idle_sec: int) -> bool:
-    """Allow seat reclaim securely with token validation or strict idle timeout thresholds."""
     if not member.session_token:
         return True
-    
-    # 1. Device-bound session resume match
     if resume_token and resume_token == member.session_token:
         return True
-    
-            # 2. Offline / Idle reclaim
-    # V-01/V-14 fix: Only allow reclaim if the member is not actively online via socket
     if not member.is_online:
         return True
-
     return False
-
-
 
 
 @bp.get("/me")
@@ -284,14 +261,16 @@ def logout():
 
 @bp.get("/session-check")
 def session_check():
-    # Attempt to authenticate via token or cookie
-    member = get_member_from_request()
-    if not member:
-        return jsonify({"authenticated": False, "error": "No active session found"}), 401
-    return jsonify({
-        "authenticated": True,
-        "member_id": member.id,
-        "display_name": member.display_name,
-        "room_id": member.room.room_id,
-        "session_token": member.session_token,
-    })
+    try:
+        member = get_member_from_request()
+        if not member:
+            return jsonify({"authenticated": False}), 200
+        return jsonify({
+            "authenticated": True,
+            "member_id": member.id,
+            "display_name": member.display_name,
+            "room_id": member.room.room_id,
+            "session_token": member.session_token,
+        }), 200
+    except Exception:
+        return jsonify({"authenticated": False}), 200
