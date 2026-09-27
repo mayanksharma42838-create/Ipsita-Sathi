@@ -35,7 +35,7 @@ const App = (() => {
   async function api(path, opts = {}) {
     const res = await fetch(path, {
       ...opts,
-      credentials: "include", // Essential for maintaining session cookies with backend
+      credentials: "include",
       headers: { ...headers(!(opts.body instanceof FormData)), ...(opts.headers || {}) },
     });
 
@@ -47,14 +47,11 @@ const App = (() => {
     }
 
     if (!res.ok) {
-      // Graceful error payload mapping instead of unhandled crash
       const errorMsg = data.error || `Request failed (${res.status})`;
       throw new Error(errorMsg);
     }
     return data;
   }
-
-
 
   function showAuthError(msg) {
     const el = $("#authError");
@@ -246,7 +243,7 @@ const App = (() => {
   async function refreshFilmTVState() {
     try {
       const data = await api("/api/filmtv/state");
-      if (data.state) await FilmTV.loadState(data.state);
+      if (data.state) await FilmTV.loadState(data.state, state.memberId);
     } catch {
       /* ignore until room ready */
     }
@@ -267,22 +264,47 @@ const App = (() => {
         setFilmTVError("Only HTTPS URLs are allowed.");
         return;
       }
-      // Removed restrictive hostname checks to allow all platforms (YouTube, etc.)
     } catch {
       setFilmTVError("Invalid URL format.");
       return;
     }
+
+    // Dual-endpoint fallback for robust backend compatibility (/api/filmtv/source and /api/filmtv/load)
+    let success = false;
+    let lastError = "Failed to share source";
+
     try {
-      const data = await api("/api/filmtv/load", {
+      const data = await api("/api/filmtv/source", {
         method: "POST",
-        body: JSON.stringify({ url, title: title || undefined }),
+        body: JSON.stringify({ source: url, source_type: "url", title: title || undefined }),
       });
-      if (data.ok && data.state) {
+      if (data && data.state) {
         await FilmTV.loadState(data.state, state.memberId);
-        urlInput.value = "";
+        if (urlInput) urlInput.value = "";
+        success = true;
       }
-    } catch (e) {
-      setFilmTVError(e.message);
+    } catch (e1) {
+      lastError = e1.message;
+    }
+
+    if (!success) {
+      try {
+        const data2 = await api("/api/filmtv/load", {
+          method: "POST",
+          body: JSON.stringify({ url, source: url, source_type: "url", title: title || undefined }),
+        });
+        if (data2 && data2.state) {
+          await FilmTV.loadState(data2.state, state.memberId);
+          if (urlInput) urlInput.value = "";
+          success = true;
+        }
+      } catch (e2) {
+        lastError = e2.message;
+      }
+    }
+
+    if (!success) {
+      setFilmTVError(lastError);
     }
   }
 
@@ -302,7 +324,7 @@ const App = (() => {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed");
 
-      if (data.ok && data.state) {
+      if (data.state) {
         await FilmTV.loadState(data.state, state.memberId);
         const fileInput = $("#filmtvFile");
         if (fileInput) fileInput.value = "";
@@ -312,12 +334,15 @@ const App = (() => {
     }
   }
 
-
   async function clearFilmTV() {
     setFilmTVError("");
     try {
       const data = await api("/api/filmtv/clear", { method: "POST", body: "{}" });
-      await FilmTV.loadState(data.state);
+      if (data && data.state) {
+        await FilmTV.loadState(data.state, state.memberId);
+      } else {
+        FilmTV.clearPlayer();
+      }
       if ($("#filmtvUrl")) $("#filmtvUrl").value = "";
     } catch (e) {
       setFilmTVError(e.message);
@@ -371,10 +396,16 @@ const App = (() => {
     state.socket.on("doodle_clear", () => DoodleBoard.clear());
     state.socket.on("instagram_sync", (p) => showInstagram(p.url));
     state.socket.on("doodle_saved", () => { });
-    state.socket.on("filmtv_control", (payload) => FilmTV.applyRemoteControl(payload));
+
+    // Fixed socket listeners passing correct state.memberId to prevent host/watcher mismatch
+    state.socket.on("filmtv_control", (payload) => {
+      if (payload && payload.state) FilmTV.loadState(payload.state, state.memberId);
+      else FilmTV.applyRemoteControl(payload);
+    });
     state.socket.on("filmtv_state", (payload) => {
       if (payload && payload.state) FilmTV.loadState(payload.state, state.memberId);
     });
+
     state.socket.on("connect", () => {
       state.socket.emit("filmtv_request_sync", { token: state.token });
     });
@@ -753,7 +784,7 @@ const App = (() => {
           images = res.results;
         }
       } catch (err) {
-        // Fallback generator if backend search route encounters any limit
+        // Fallback generator
       }
 
       if (!images || images.length === 0) {
@@ -832,11 +863,9 @@ const App = (() => {
       return;
     }
 
-    // Ensure sandbox has no allow-same-origin if allow-scripts is present
     frame.setAttribute("sandbox", "allow-scripts allow-popups allow-forms");
     frame.src = embed;
     ph.style.display = "none";
-
   }
 
   async function syncInstagram() {
