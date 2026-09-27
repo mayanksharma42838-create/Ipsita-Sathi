@@ -240,7 +240,8 @@ const App = (() => {
 
   async function loadFilmTVUrl() {
     setFilmTVError("");
-    const url = $("#filmtvUrl")?.value.trim();
+    const urlInput = $("#filmtvUrl");
+    const url = (urlInput?.value || "").trim();
     const title = ($("#filmtvTitleInput")?.value || "").trim();
     if (!url) {
       setFilmTVError("Please paste a valid video URL, YouTube link, or document link.");
@@ -248,21 +249,11 @@ const App = (() => {
     }
     try {
       const u = new URL(url);
-      if (u.protocol !== "https:" && u.protocol !== "http:") {
-        setFilmTVError("Only HTTP/HTTPS URLs are allowed.");
+      if (u.protocol !== "https:") {
+        setFilmTVError("Only HTTPS URLs are allowed.");
         return;
       }
-      const host = (u.hostname || "").toLowerCase();
-      if (
-        host === "localhost" ||
-        host === "127.0.0.1" ||
-        host.startsWith("192.168.") ||
-        host.startsWith("10.")
-      ) {
-        setFilmTVError("Private / local network URLs are blocked.");
-        return;
-      }
-      // Streaming sites & YouTube restrictions successfully removed to allow all platforms.
+      // Removed restrictive hostname checks to allow all platforms (YouTube, etc.)
     } catch {
       setFilmTVError("Invalid URL format.");
       return;
@@ -272,7 +263,10 @@ const App = (() => {
         method: "POST",
         body: JSON.stringify({ url, title: title || undefined }),
       });
-      await FilmTV.loadState(data.state);
+      if (data.ok && data.state) {
+        await FilmTV.loadState(data.state, state.memberId);
+        urlInput.value = "";
+      }
     } catch (e) {
       setFilmTVError(e.message);
     }
@@ -293,12 +287,17 @@ const App = (() => {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Upload failed");
-      await FilmTV.loadState(data.state);
-      if ($("#filmtvFile")) $("#filmtvFile").value = "";
+
+      if (data.ok && data.state) {
+        await FilmTV.loadState(data.state, state.memberId);
+        const fileInput = $("#filmtvFile");
+        if (fileInput) fileInput.value = "";
+      }
     } catch (e) {
       setFilmTVError(e.message);
     }
   }
+
 
   async function clearFilmTV() {
     setFilmTVError("");

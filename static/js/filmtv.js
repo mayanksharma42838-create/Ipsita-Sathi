@@ -90,6 +90,9 @@ const FilmTV = (() => {
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
 
+    const container = document.getElementById("filmtvIframeContainer") || containerEl;
+    if (container) container.style.display = "block";
+
     // Check if source is a direct video file or uploaded media with video extension
     const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
     const docExts = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt)$/i;
@@ -151,7 +154,7 @@ const FilmTV = (() => {
           }
         }
 
-        if (iframeEl.src !== displaySource && iframeEl.src.indexOf(displaySource) === -1) {
+        if (iframeEl.src !== displaySource) {
           iframeEl.src = displaySource;
         }
 
@@ -165,11 +168,10 @@ const FilmTV = (() => {
       }
     }
 
-
-
     if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
   }
+
 
   function clearPlayer() {
     if (iframeEl) iframeEl.removeAttribute("src");
