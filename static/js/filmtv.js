@@ -87,27 +87,25 @@ const FilmTV = (() => {
     const titleEl = document.getElementById("filmtvTitle");
     if (titleEl) titleEl.textContent = state.title || "Shared Workspace";
 
-    // STEP 1: Force visibility of the main containers immediately
+    // STEP 1: Wake up containers immediately
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
-
-    // containerEl is the #filmtvIframeContainer from init
-    if (containerEl) {
-      containerEl.style.display = "block";
-    }
+    if (containerEl) containerEl.style.display = "block";
 
     const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
-    const isVideo = videoExts.test(state.source) || (state.source_type === "upload" && videoExts.test(state.source));
+    // CRITICAL FIX: Only treat as video if the extension matches
+    const isVideoFile = videoExts.test(state.source);
+    const isUpload = state.source_type === "upload";
 
-    // STEP 2: Handle rendering based on content type
-    if (isVideo) {
-      // Hide Iframe, Show Video
+    // STEP 2: Logic Branching
+    if (isUpload && isVideoFile) {
+      // HANDLE UPLOADED VIDEO
       if (iframeEl) iframeEl.style.display = "none";
       if (videoEl) {
         videoEl.style.display = "block";
-        const src = state.source_type === "upload" ? "/api/filmtv/stream" : state.source;
+        const src = "/api/filmtv/stream";
 
-        if (videoEl.src !== src && !videoEl.src.endsWith(src)) {
+        if (videoEl.src !== window.location.origin + src) {
           videoEl.src = src;
           videoEl.load();
         }
@@ -125,26 +123,29 @@ const FilmTV = (() => {
         applyingRemote = false;
       }
     } else {
-      // Hide Video, Show Iframe
+      // HANDLE URLS OR UPLOADED DOCUMENTS
       if (videoEl) {
         videoEl.pause();
         videoEl.style.display = "none";
       }
       if (iframeEl) {
-        // Iframe must be display:block for browser to render correctly
+        // Force display:block before setting src to ensure rendering engine wakes up
         iframeEl.style.display = "block";
 
         let displaySource = state.source;
 
-        if (state.source_type === "upload") {
+        if (isUpload) {
+          // Document Upload
           const streamUrl = window.location.origin + "/api/filmtv/stream";
           if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(state.source)) {
+            // Office docs via Microsoft viewer
             displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
           } else {
+            // PDFs or Text files can be rendered directly
             displaySource = streamUrl;
           }
         } else {
-          // YouTube Transform
+          // YouTube / Web URL Transform
           if (displaySource.includes("youtube.com/watch?v=")) {
             displaySource = displaySource.replace("watch?v=", "embed/");
           } else if (displaySource.includes("youtu.be/")) {
@@ -169,6 +170,7 @@ const FilmTV = (() => {
     if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
   }
+
 
 
 
