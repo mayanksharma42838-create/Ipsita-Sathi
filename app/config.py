@@ -57,6 +57,8 @@ class Config:
     ALLOWED_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
     ALLOWED_AUDIO_EXT = {".webm", ".ogg", ".mp3", ".wav", ".m4a"}
     ALLOWED_VIDEO_EXT = {".mp4", ".webm", ".ogg", ".mov", ".mkv", ".m4v"}
+    ALLOWED_DOC_EXT = {".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt"}
+
 
     CORS_ORIGINS = _cors_origins()
 

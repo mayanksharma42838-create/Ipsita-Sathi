@@ -608,7 +608,7 @@ def filmtv_upload():
     if limited:
         return limited
 
-    try:
+        try:
         if "file" not in request.files:
             return jsonify({"error": "file required"}), 400
         
@@ -616,23 +616,23 @@ def filmtv_upload():
         if not f or not f.filename:
             return jsonify({"error": "empty file"}), 400
 
-        original = secure_filename(f.filename or "movie.mp4")
+        original = secure_filename(f.filename or "file.dat")
         ext = Path(original).suffix.lower()
-        if ext not in current_app.config["ALLOWED_VIDEO_EXT"]:
-            return jsonify({"error": f"video type not allowed ({ext})"}), 400
+        
+        allowed_all = current_app.config["ALLOWED_VIDEO_EXT"] | current_app.config["ALLOWED_DOC_EXT"]
+        if ext not in allowed_all:
+            return jsonify({"error": f"file type not allowed ({ext})"}), 400
 
+        # Optional: Magic-byte sniffing for extra security if it's a video
         header = read_upload_header(f, 32)
-        if not sniff_video_ok(header):
-            # Also allow general files for workspace sharing, but here we strictly check video for FilmTV
-            # If we want to allow documents, we'd add sniff_document_ok or similar.
-            # For now, let's keep it to video as per original intent but handle it gracefully.
-            pass 
-
+        is_video = sniff_video_ok(header)
+        
         f.seek(0, os.SEEK_END)
         size = f.tell()
         f.seek(0)
         if size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
-            return jsonify({"error": "video too large or empty"}), 400
+            return jsonify({"error": "file too large or empty"}), 400
+
 
         # Clean up old upload if exists
         if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:

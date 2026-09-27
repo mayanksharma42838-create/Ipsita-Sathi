@@ -90,14 +90,19 @@ const FilmTV = (() => {
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
 
-    // Check if source is a direct video file or uploaded media
-    const isVideo = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i.test(state.source) || state.source_type === "upload";
+    // Check if source is a direct video file or uploaded media with video extension
+    const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
+    const docExts = /\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt)$/i;
 
-    if (isVideo) {
+    const isVideoFile = videoExts.test(state.source);
+    const isDocFile = docExts.test(state.source);
+    const isUpload = state.source_type === "upload";
+
+    if (isUpload && isVideoFile) {
       if (iframeEl) iframeEl.style.display = "none";
       if (videoEl) {
         videoEl.style.display = "block";
-        const src = state.source_type === "upload" ? "/api/filmtv/stream" : state.source;
+        const src = "/api/filmtv/stream";
 
         if (videoEl.src !== src && videoEl.src.indexOf(src) === -1) {
           videoEl.src = src;
@@ -117,7 +122,7 @@ const FilmTV = (() => {
         applyingRemote = false;
       }
     } else {
-      // Handles Streaming platforms (YouTube, Netflix, Twitch, Vimeo) & Documents (PDF, Word, PPT, Excel via viewer)
+      // Handles Streaming platforms, Documents (PDF, Office) and general URLs
       if (videoEl) {
         videoEl.pause();
         videoEl.style.display = "none";
@@ -126,7 +131,18 @@ const FilmTV = (() => {
         iframeEl.style.display = "block";
 
         let displaySource = state.source;
-        // Optional: Embed formatting helpers for YouTube if raw watch link is passed
+
+        // Handle uploaded documents via Google/Microsoft viewers if needed, 
+        // or just direct iframe if the browser supports it (PDF/TXT)
+        if (isUpload) {
+          displaySource = window.location.origin + "/api/filmtv/stream";
+          if (isDocFile && !/\.pdf$/i.test(state.source)) {
+            // Office docs usually need a viewer
+            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(displaySource)}`;
+          }
+        }
+
+        // YouTube watch/embed transformations
         if (displaySource.includes("youtube.com/watch?v=")) {
           displaySource = displaySource.replace("watch?v=", "embed/");
         } else if (displaySource.includes("youtu.be/")) {
@@ -140,12 +156,15 @@ const FilmTV = (() => {
         applyingRemote = true;
         try {
           if (state.scroll_top !== undefined && iframeEl.contentWindow) {
+            // Scroll sync only works on same-origin or with specific iframe support
+            // We keep it wrapped in try-catch for cross-origin sites
             iframeEl.contentWindow.scrollTo(0, state.scroll_top);
           }
         } catch (e) { }
         applyingRemote = false;
       }
     }
+
 
     if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");

@@ -113,11 +113,13 @@
             </div>
             <div class="filmtv-dock-row filmtv-dock-actions">
               <label class="btn ghost file-btn">
-                Upload video
+                Upload File
                 <input type="file" id="filmtvFile"
-                  accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,.mkv,.m4v" hidden />
+                  accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,.mkv,.m4v,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                  hidden />
               </label>
               <input type="text" id="filmtvTitleInput" maxlength="256" placeholder="Optional title" />
+
               <button type="button" class="btn ghost" id="btnFilmTVClear">Clear</button>
             </div>
             <p class="err" id="filmtvError"></p>

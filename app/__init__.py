@@ -70,10 +70,12 @@ def create_app(config_class=Config):
             "script-src 'self' https://cdn.socket.io https://cdnjs.cloudflare.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
-            "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com https://picsum.photos; "
+            "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com https://picsum.photos https://*.picsum.photos; "
+
             "media-src 'self' blob: https:; "
             "connect-src 'self' ws: wss: https://cdn.socket.io https://cdnjs.cloudflare.com; "
-            "frame-src https://www.instagram.com https://www.youtube.com https://*.youtube.com; "
+            "frame-src https://www.instagram.com https://www.youtube.com https://*.youtube.com https://*.google.com https://docs.google.com https://view.officeapps.live.com; "
+
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "
