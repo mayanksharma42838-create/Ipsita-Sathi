@@ -35,8 +35,7 @@ const FilmTV = (() => {
     if (!iframeEl && containerEl) {
       iframeEl = document.createElement("iframe");
       iframeEl.className = "filmtv-iframe";
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads");
-
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-same-origin");
       iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
       iframeEl.style.cssText = "width:100%; height:100%; border:none; display:none;";
 
@@ -53,8 +52,10 @@ const FilmTV = (() => {
 
       containerEl.appendChild(iframeEl);
     }
-  }
 
+    // Bind Share button and input listener
+    setupShareHandlers();
+  }
 
   function setSocket(sock) {
     socket = sock;
@@ -78,6 +79,38 @@ const FilmTV = (() => {
     }
   }
 
+  function setupShareHandlers() {
+    const shareBtn = document.getElementById("filmtvShareBtn");
+    const inputEl = document.getElementById("filmtvInput");
+
+    if (shareBtn && inputEl && !shareBtn.dataset.bound) {
+      shareBtn.dataset.bound = "true";
+      shareBtn.addEventListener("click", async () => {
+        const val = inputEl.value.trim();
+        if (!val) return;
+
+        try {
+          const res = await fetch("/api/filmtv/source", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Session-Token": getToken() || ""
+            },
+            body: JSON.stringify({ source: val, source_type: "url" })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || "Failed to share source");
+          } else {
+            inputEl.value = "";
+          }
+        } catch (err) {
+          console.error("Share error:", err);
+        }
+      });
+    }
+  }
+
   async function loadState(state, memberId) {
     if (!state || !state.stream_url) {
       clearPlayer();
@@ -93,8 +126,8 @@ const FilmTV = (() => {
     if (empty) empty.style.display = "none";
     if (containerEl) containerEl.style.display = "block";
 
-    const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
-    const isVideo = videoExts.test(state.source) && state.source_type === "upload";
+    const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)(\?.*)?$/i;
+    const isVideo = videoExts.test(state.source || "") && state.source_type === "upload";
 
     // STEP 2: Logic Branching
     if (isVideo) {
@@ -105,7 +138,7 @@ const FilmTV = (() => {
         const tokenStr = getToken() ? `?token=${encodeURIComponent(getToken())}` : "";
         const src = state.stream_url + tokenStr;
 
-        if (videoEl.src !== window.location.origin + src && !videoEl.src.includes(state.stream_url)) {
+        if (!videoEl.src.includes(state.stream_url)) {
           videoEl.src = src;
           videoEl.load();
         }
@@ -130,7 +163,6 @@ const FilmTV = (() => {
         videoEl.style.display = "none";
       }
       if (iframeEl) {
-        // Force display:block before setting src to ensure rendering engine wakes up
         iframeEl.style.display = "block";
 
         let displaySource = state.stream_url;
@@ -140,19 +172,28 @@ const FilmTV = (() => {
           const tokenStr = getToken() ? `?token=${encodeURIComponent(getToken())}` : "";
           const streamUrl = window.location.origin + state.stream_url + tokenStr;
 
-          if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(state.source)) {
-            // Office docs via Microsoft viewer
+          if (/\.(doc|docx|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(state.source || "")) {
             displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
           } else {
             displaySource = streamUrl;
           }
         } else {
-
-          // YouTube / Web URL Transform
-          if (displaySource.includes("youtube.com/watch?v=")) {
-            displaySource = displaySource.replace("watch?v=", "embed/");
-          } else if (displaySource.includes("youtu.be/")) {
-            displaySource = displaySource.replace("youtu.be/", "www.youtube.com/embed/");
+          // Robust YouTube URL Transform (Handles watch?v=, youtu.be, and extra params)
+          let rawUrl = (state.source || state.stream_url || "").trim();
+          if (rawUrl.includes("youtube.com/watch?v=")) {
+            const urlObj = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
+            const videoId = urlObj.searchParams.get("v");
+            if (videoId) {
+              displaySource = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
+            }
+          } else if (rawUrl.includes("youtu.be/")) {
+            const parts = rawUrl.split("youtu.be/");
+            if (parts[1]) {
+              const videoId = parts[1].split("?")[0];
+              displaySource = `https://www.youtube.com/embed/${videoId}?enablejsapi=1`;
+            }
+          } else {
+            displaySource = rawUrl;
           }
         }
 
@@ -173,11 +214,6 @@ const FilmTV = (() => {
     if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
   }
-
-
-
-
-
 
   function clearPlayer() {
     if (iframeEl) iframeEl.removeAttribute("src");
