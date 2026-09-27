@@ -1,5 +1,5 @@
 /**
- * Shared interactive workspace / iframe viewer - Synchronized with index.html IDs.
+ * Shared interactive workspace / iframe viewer - Synchronized with index.html IDs & 100% Bulletproof.
  */
 const FilmTV = (() => {
   let containerEl = null;
@@ -11,7 +11,7 @@ const FilmTV = (() => {
   let isHost = false;
 
   function init({ container, socket: sock, tokenFn }) {
-    console.log("🟢 [FilmTV] Initializing module with index.html sync...");
+    console.log("🟢 [FilmTV] Initializing module with full sync...");
     containerEl = container;
     socket = sock;
     getToken = tokenFn;
@@ -58,7 +58,6 @@ const FilmTV = (() => {
   }
 
   function updateStatusBadge(status) {
-    // Synchronized with #filmtvSyncBadge in index.html
     const badge = document.getElementById("filmtvSyncBadge") || document.getElementById("filmtvStatusBadge");
     if (badge) {
       badge.textContent = status;
@@ -67,24 +66,20 @@ const FilmTV = (() => {
   }
 
   function setupShareHandlers() {
-    // Synchronized with #btnFilmTVLoad and #filmtvUrl in index.html
     const shareBtn = document.getElementById("btnFilmTVLoad") || document.getElementById("filmtvShareBtn");
     const inputEl = document.getElementById("filmtvUrl") || document.getElementById("filmtvInput");
     const clearBtn = document.getElementById("btnFilmTVClear");
-
-    console.log("🔍 [FilmTV] Binding elements -> ShareBtn:", shareBtn, "| InputEl:", inputEl);
 
     if (shareBtn && inputEl && !shareBtn.dataset.bound) {
       shareBtn.dataset.bound = "true";
       shareBtn.addEventListener("click", async () => {
         const val = inputEl.value.trim();
         if (!val) {
-          alert("Please enter a valid URL.");
+          alert("Kripya ek valid URL darj karein.");
           return;
         }
 
         try {
-          console.log("📤 [FilmTV] Sharing URL source:", val);
           const res = await fetch("/api/filmtv/source", {
             method: "POST",
             headers: {
@@ -95,7 +90,7 @@ const FilmTV = (() => {
           });
           const data = await res.json();
           if (!res.ok) {
-            alert(data.error || "Failed to share source");
+            alert(data.error || "Source share karne mein asafalta rahi.");
           } else {
             inputEl.value = "";
           }
@@ -139,13 +134,17 @@ const FilmTV = (() => {
     if (empty) empty.style.display = "none";
 
     const targetContainer = document.getElementById("filmtvIframeContainer") || containerEl;
-    if (targetContainer) targetContainer.style.display = "block";
 
-    const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)(\?.*)?$/i;
-    const isVideo = videoExts.test(state.source || "") && state.source_type === "upload";
+    // Bulletproof check for video uploads vs URLs
+    const isVideoUpload = state.source_type === "upload" && (
+      /\.(mp4|webm|ogg|mov|mkv|m4v)(\?.*)?$/i.test(state.source || "") ||
+      state.stream_url === "/api/filmtv/stream"
+    );
 
-    if (isVideo) {
+    if (isVideoUpload) {
       if (iframeEl) iframeEl.style.display = "none";
+      if (targetContainer) targetContainer.style.display = "none";
+
       if (videoEl) {
         videoEl.style.display = "block";
         const tokenStr = getToken() ? `?token=${encodeURIComponent(getToken())}` : "";
@@ -173,9 +172,13 @@ const FilmTV = (() => {
         videoEl.pause();
         videoEl.style.display = "none";
       }
+      if (targetContainer) targetContainer.style.display = "block";
+
       if (iframeEl) {
         iframeEl.style.display = "block";
-        let displaySource = state.stream_url || state.source;
+        let displaySource = "";
+
+        const rawUrl = (state.source || state.stream_url || "").trim();
 
         if (state.source_type === "upload") {
           const tokenStr = getToken() ? `?token=${encodeURIComponent(getToken())}` : "";
@@ -187,8 +190,6 @@ const FilmTV = (() => {
             displaySource = streamUrl;
           }
         } else {
-          let rawUrl = (state.source || state.stream_url || "").trim();
-
           if (rawUrl.includes("youtube.com/watch?v=")) {
             try {
               const urlObj = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
