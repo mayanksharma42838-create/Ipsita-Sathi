@@ -44,7 +44,7 @@ class Room(db.Model):
     def check_password(self, password: str) -> bool:
         return check_password_hash(self.password_hash, password)
 
-                def filmtv_state(self) -> dict:
+    def filmtv_state(self) -> dict:
         """Playback snapshot with lag-compensated position estimate."""
         pos = float(self.filmtv_position or 0.0)
         if self.filmtv_playing and self.filmtv_updated_at:
@@ -55,9 +55,6 @@ class Room(db.Model):
             if elapsed > 0:
                 pos += elapsed
         
-        # Identify the active streaming host and append session token if needed for auth bypass
-        # But we must be careful not to leak a member's token. We'll rely on the cookie 
-        # or append the room's token explicitly on the frontend.
         return {
             "source_type": self.filmtv_source_type,
             "source": self.filmtv_source,
@@ -69,10 +66,6 @@ class Room(db.Model):
             "updated_at": self.filmtv_updated_at.isoformat() if self.filmtv_updated_at else None,
             "server_time": utcnow().isoformat(),
         }
-
-
-
-
 
 
 class Member(db.Model):
