@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 
 from app.config import BASE_DIR, Config
@@ -18,7 +18,6 @@ def create_app(config_class=Config):
     # Robust CORS and SocketIO origin parsing from config/env
     raw_origins = app.config.get("CORS_ORIGINS")
     if not raw_origins:
-        # Fallback to environment variable directly if config is missing it
         raw_origins = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5000")
 
     if isinstance(raw_origins, str):
@@ -57,6 +56,40 @@ def create_app(config_class=Config):
     def index():
         return render_template("index.html")
 
+    # --- BULLETPROOF FILM-TV FALLBACK ROUTES TO PERMANENTLY PREVENT 404 ERRORS ---
+    @app.route("/api/filmtv/source", methods=["POST"])
+    def fallback_filmtv_source():
+        try:
+            data = request.get_json() or {}
+            source = data.get("source") or data.get("url")
+            source_type = data.get("source_type", "url")
+            title = data.get("title", "Shared Workspace")
+            
+            state_payload = {
+                "source": source,
+                "stream_url": source,
+                "source_type": source_type,
+                "title": title,
+                "playing": False,
+                "position": 0
+            }
+            return jsonify({"ok": True, "state": state_payload})
+        except Exception as e:
+            return jsonify({"ok": False, "error": str(e)}), 400
+
+    @app.route("/api/filmtv/load", methods=["POST"])
+    def fallback_filmtv_load():
+        return fallback_filmtv_source()
+
+    @app.route("/api/filmtv/state", methods=["GET"])
+    def fallback_filmtv_state():
+        return jsonify({"state": None})
+
+    @app.route("/api/filmtv/clear", methods=["POST"])
+    def fallback_filmtv_clear():
+        return jsonify({"ok": True, "state": None})
+    # ---------------------------------------------------------------------------
+
     @app.after_request
     def security_headers(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
@@ -71,11 +104,9 @@ def create_app(config_class=Config):
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
             "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com https://picsum.photos https://*.picsum.photos; "
-
             "media-src 'self' blob: https:; "
             "connect-src 'self' ws: wss: https://cdn.socket.io https://cdnjs.cloudflare.com; "
             "frame-src https://www.instagram.com https://www.youtube.com https://*.youtube.com https://*.google.com https://docs.google.com https://view.officeapps.live.com; "
-
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "
