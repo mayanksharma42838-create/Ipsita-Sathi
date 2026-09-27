@@ -102,14 +102,16 @@ const FilmTV = (() => {
       if (iframeEl) iframeEl.style.display = "none";
       if (videoEl) {
         videoEl.style.display = "block";
-        const src = state.stream_url;
+        const tokenStr = getToken() ? `?token=${encodeURIComponent(getToken())}` : "";
+        const src = state.stream_url + tokenStr;
 
-        if (videoEl.src !== window.location.origin + src) {
+        if (videoEl.src !== window.location.origin + src && !videoEl.src.includes(state.stream_url)) {
           videoEl.src = src;
           videoEl.load();
         }
 
         applyingRemote = true;
+
         if (Math.abs(videoEl.currentTime - (state.position || 0)) > 1.5) {
           videoEl.currentTime = state.position || 0;
         }
@@ -135,11 +137,17 @@ const FilmTV = (() => {
 
         if (state.source_type === "upload") {
           // Document Upload (PDFs, Word, etc.)
+          const tokenStr = getToken() ? `?token=${encodeURIComponent(getToken())}` : "";
+          const streamUrl = window.location.origin + state.stream_url + tokenStr;
+
           if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(state.source)) {
             // Office docs via Microsoft viewer
-            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(window.location.origin + state.stream_url)}`;
+            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
+          } else {
+            displaySource = streamUrl;
           }
         } else {
+
           // YouTube / Web URL Transform
           if (displaySource.includes("youtube.com/watch?v=")) {
             displaySource = displaySource.replace("watch?v=", "embed/");

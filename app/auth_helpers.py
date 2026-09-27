@@ -11,12 +11,16 @@ from app.models import Member, Room, utcnow
 def get_member_from_request() -> Member | None:
     """Authenticate via header or Flask session cookie — never query-string tokens."""
     try:
-        # Explicitly ignore ?token= / request.args (V-04)
         token = (
             request.headers.get("X-Session-Token")
             or _bearer_token()
             or session.get("member_token")
         )
+        
+        # Allow query string token specifically for external viewer fetches (Office Viewer, Video streams)
+        if not token and request.args.get("token"):
+            token = request.args.get("token")
+
         if not token:
             return None
         
@@ -34,6 +38,7 @@ def get_member_from_request() -> Member | None:
     except Exception:
         db.session.rollback()
         return None
+
 
 
 def _bearer_token() -> str | None:

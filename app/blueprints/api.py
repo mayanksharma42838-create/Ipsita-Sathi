@@ -676,17 +676,22 @@ def filmtv_upload():
 
 
 @bp.get("/filmtv/stream")
-@login_required
 def filmtv_stream():
     """Stream uploaded media with support for byte-range requests."""
+    # Custom auth handling for streaming media to support 3rd party viewers (like Office Viewer)
+    member = get_member_from_request()
+    if not member:
+        return jsonify({"error": "Unauthorized stream request"}), 401
+
     try:
-        if g.room.filmtv_source_type != "upload" or not g.room.filmtv_source:
-            return jsonify({"error": "no uploaded video"}), 404
+        room = member.room
+        if room.filmtv_source_type != "upload" or not room.filmtv_source:
+            return jsonify({"error": "no uploaded video/document"}), 404
             
-        file_path = Path(g.room.filmtv_source)
+        file_path = Path(room.filmtv_source)
         if not file_path.is_file():
             logger.error(f"FilmTV file missing on disk: {file_path}")
-            return jsonify({"error": "Video file not found"}), 404
+            return jsonify({"error": "File not found"}), 404
             
         filmtv_dir = Path(current_app.config["FILMTV_DIR"]).resolve()
         try:
@@ -695,10 +700,12 @@ def filmtv_stream():
         except ValueError:
             return jsonify({"error": "Unauthorized path"}), 403
             
+        # Support byte-range requests for videos via `conditional=True`
         return send_file(str(file_path), conditional=True)
     except Exception as e:
         logger.error(f"Streaming error: {e}")
         return jsonify({"error": "Streaming failed"}), 500
+
 
 
 
