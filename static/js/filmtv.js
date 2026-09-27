@@ -135,18 +135,20 @@ const FilmTV = (() => {
         // Handle uploaded documents via Google/Microsoft viewers if needed, 
         // or just direct iframe if the browser supports it (PDF/TXT)
         if (isUpload) {
-          displaySource = window.location.origin + "/api/filmtv/stream";
+          const streamUrl = window.location.origin + "/api/filmtv/stream";
           if (isDocFile && !/\.pdf$/i.test(state.source)) {
             // Office docs usually need a viewer
-            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(displaySource)}`;
+            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
+          } else {
+            displaySource = streamUrl;
           }
-        }
-
-        // YouTube watch/embed transformations
-        if (displaySource.includes("youtube.com/watch?v=")) {
-          displaySource = displaySource.replace("watch?v=", "embed/");
-        } else if (displaySource.includes("youtu.be/")) {
-          displaySource = displaySource.replace("youtu.be/", "www.youtube.com/embed/");
+        } else {
+          // YouTube watch/embed transformations
+          if (displaySource.includes("youtube.com/watch?v=")) {
+            displaySource = displaySource.replace("watch?v=", "embed/");
+          } else if (displaySource.includes("youtu.be/")) {
+            displaySource = displaySource.replace("youtu.be/", "www.youtube.com/embed/");
+          }
         }
 
         if (iframeEl.src !== displaySource && iframeEl.src.indexOf(displaySource) === -1) {
@@ -156,14 +158,13 @@ const FilmTV = (() => {
         applyingRemote = true;
         try {
           if (state.scroll_top !== undefined && iframeEl.contentWindow) {
-            // Scroll sync only works on same-origin or with specific iframe support
-            // We keep it wrapped in try-catch for cross-origin sites
             iframeEl.contentWindow.scrollTo(0, state.scroll_top);
           }
         } catch (e) { }
         applyingRemote = false;
       }
     }
+
 
 
     if (videoEl) videoEl.controls = isHost;
