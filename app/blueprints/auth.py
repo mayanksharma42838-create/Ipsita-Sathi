@@ -218,17 +218,22 @@ def join_room():
 
 
 def _may_resume_or_reclaim(member: Member, resume_token: str | None, idle_sec: int) -> bool:
+    """Allow seat reclaim if token matches or if the member is currently offline."""
     if not member.session_token:
         return True
     
-    # Secure device-bound resume check
+    # 1. Device-bound session resume
     if resume_token and resume_token == member.session_token:
         return True
     
-    # 1-Hour Identity Hijack fix: we no longer allow claiming an identity just because it's idle.
-    # The member MUST supply the correct resume_token (tied to session_token in DB) to rejoin as the same display name.
-    # Otherwise, they must choose a new display name, or wait for the system to purge them entirely if we added that feature.
+    # 2. Reclaim if the member is not actively online (V-01/V-14 fix)
+    # This ensures partners aren't locked out if they clear cache/switch devices,
+    # but prevents active session hijacking.
+    if not member.is_online:
+        return True
+
     return False
+
 
 
 @bp.get("/me")
