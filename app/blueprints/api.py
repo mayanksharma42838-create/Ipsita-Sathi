@@ -552,15 +552,17 @@ def get_doodle():
 @bp.get("/filmtv/state")
 @login_required
 def filmtv_state():
-    if g.room.filmtv_source_type == "youtube":
-        g.room.filmtv_source_type = None
-        g.room.filmtv_source = None
-        g.room.filmtv_title = None
-        g.room.filmtv_playing = False
-        g.room.filmtv_position = 0.0
-        g.room.filmtv_updated_at = utcnow()
-        db.session.commit()
-    return jsonify({"ok": True, "state": g.room.filmtv_state()})
+    try:
+        # Legacy cleanup for old source types if necessary
+        if g.room.filmtv_source_type == "youtube":
+            g.room.filmtv_source_type = "url"
+            db.session.commit()
+            
+        return jsonify({"ok": True, "state": g.room.filmtv_state()})
+    except Exception as e:
+        logger.error(f"Error fetching filmtv state: {e}")
+        return jsonify({"error": "Failed to fetch state"}), 500
+
 
 
 @bp.post("/filmtv/load")
@@ -676,16 +678,28 @@ def filmtv_upload():
 @bp.get("/filmtv/stream")
 @login_required
 def filmtv_stream():
-    if g.room.filmtv_source_type != "upload" or not g.room.filmtv_source:
-        return jsonify({"error": "no uploaded video"}), 404
-    if not os.path.isfile(g.room.filmtv_source):
-        return jsonify({"error": "file missing"}), 404
-    filmtv_dir = Path(current_app.config["FILMTV_DIR"]).resolve()
+    """Stream uploaded media with support for byte-range requests."""
     try:
-        Path(g.room.filmtv_source).resolve().relative_to(filmtv_dir)
-    except ValueError:
-        return jsonify({"error": "not found"}), 404
-    return send_file(g.room.filmtv_source, conditional=True)
+        if g.room.filmtv_source_type != "upload" or not g.room.filmtv_source:
+            return jsonify({"error": "no uploaded video"}), 404
+            
+        file_path = Path(g.room.filmtv_source)
+        if not file_path.is_file():
+            logger.error(f"FilmTV file missing on disk: {file_path}")
+            return jsonify({"error": "Video file not found"}), 404
+            
+        filmtv_dir = Path(current_app.config["FILMTV_DIR"]).resolve()
+        try:
+            # Prevent directory traversal
+            file_path.resolve().relative_to(filmtv_dir)
+        except ValueError:
+            return jsonify({"error": "Unauthorized path"}), 403
+            
+        return send_file(str(file_path), conditional=True)
+    except Exception as e:
+        logger.error(f"Streaming error: {e}")
+        return jsonify({"error": "Streaming failed"}), 500
+
 
 
 @bp.post("/filmtv/clear")
