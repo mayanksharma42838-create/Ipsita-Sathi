@@ -608,7 +608,7 @@ def filmtv_upload():
     if limited:
         return limited
 
-        try:
+    try:
         if "file" not in request.files:
             return jsonify({"error": "file required"}), 400
         
@@ -632,7 +632,6 @@ def filmtv_upload():
         f.seek(0)
         if size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
             return jsonify({"error": "file too large or empty"}), 400
-
 
         # Clean up old upload if exists
         if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
@@ -670,6 +669,7 @@ def filmtv_upload():
         logger.exception("Error in filmtv_upload")
         db.session.rollback()
         return jsonify({"error": "Internal server error during upload"}), 500
+
 
 
 
