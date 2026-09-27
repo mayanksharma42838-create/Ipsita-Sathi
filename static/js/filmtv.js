@@ -1,5 +1,5 @@
 /**
- * Shared interactive workspace / iframe viewer - Synchronized with index.html IDs & 100% Bulletproof.
+ * Shared interactive workspace / iframe viewer - Smart & Bulletproofed.
  */
 const FilmTV = (() => {
   let containerEl = null;
@@ -11,7 +11,7 @@ const FilmTV = (() => {
   let isHost = false;
 
   function init({ container, socket: sock, tokenFn }) {
-    console.log("🟢 [FilmTV] Initializing module with full sync...");
+    console.log("🟢 [FilmTV] Initializing smart module...");
     containerEl = container;
     socket = sock;
     getToken = tokenFn;
@@ -135,11 +135,21 @@ const FilmTV = (() => {
 
     const targetContainer = document.getElementById("filmtvIframeContainer") || containerEl;
 
-    // Bulletproof check for video uploads vs URLs
-    const isVideoUpload = state.source_type === "upload" && (
-      /\.(mp4|webm|ogg|mov|mkv|m4v)(\?.*)?$/i.test(state.source || "") ||
-      state.stream_url === "/api/filmtv/stream"
-    );
+    // Smart & Comprehensive Video Upload Detection
+    const sourceStr = (state.source || "").toLowerCase();
+    const streamUrlStr = (state.stream_url || "").toLowerCase();
+
+    const isVideoUpload = (
+      state.source_type === "upload" && (
+        streamUrlStr.includes("stream") ||
+        sourceStr.endsWith(".mp4") || sourceStr.endsWith(".webm") ||
+        sourceStr.endsWith(".ogg") || sourceStr.endsWith(".mov") ||
+        sourceStr.endsWith(".mkv") || sourceStr.endsWith(".m4v") ||
+        sourceStr.includes("media_storage")
+      )
+    ) || streamUrlStr === "/api/filmtv/stream";
+
+    console.log("🔍 [FilmTV Smart Check] Is Video Upload?", isVideoUpload);
 
     if (isVideoUpload) {
       if (iframeEl) iframeEl.style.display = "none";
@@ -148,9 +158,9 @@ const FilmTV = (() => {
       if (videoEl) {
         videoEl.style.display = "block";
         const tokenStr = getToken() ? `?token=${encodeURIComponent(getToken())}` : "";
-        const src = state.stream_url + tokenStr;
+        const src = (state.stream_url || "/api/filmtv/stream") + tokenStr;
 
-        if (!videoEl.src.includes(state.stream_url)) {
+        if (!videoEl.src.includes("stream")) {
           videoEl.src = src;
           videoEl.load();
         }
@@ -161,7 +171,7 @@ const FilmTV = (() => {
         }
 
         if (state.playing) {
-          videoEl.play().catch(() => { });
+          videoEl.play().catch((err) => console.log("Playback auto-start handled:", err));
         } else {
           videoEl.pause();
         }
