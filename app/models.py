@@ -54,16 +54,18 @@ class Room(db.Model):
             elapsed = (utcnow() - ref).total_seconds()
             if elapsed > 0:
                 pos += elapsed
-        return {
+                return {
             "source_type": self.filmtv_source_type,
             "source": self.filmtv_source,
             "stream_url": "/api/filmtv/stream" if self.filmtv_source_type == "upload" else self.filmtv_source,
             "title": self.filmtv_title,
             "playing": bool(self.filmtv_playing),
             "position": round(pos, 3),
+            "host_id": self.filmtv_host_id,
             "updated_at": self.filmtv_updated_at.isoformat() if self.filmtv_updated_at else None,
             "server_time": utcnow().isoformat(),
         }
+
 
 
 class Member(db.Model):

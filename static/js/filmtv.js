@@ -79,7 +79,7 @@ const FilmTV = (() => {
   }
 
   async function loadState(state, memberId) {
-    if (!state || !state.source) {
+    if (!state || !state.stream_url) {
       clearPlayer();
       return;
     }
@@ -94,17 +94,15 @@ const FilmTV = (() => {
     if (containerEl) containerEl.style.display = "block";
 
     const videoExts = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
-    // CRITICAL FIX: Only treat as video if the extension matches
-    const isVideoFile = videoExts.test(state.source);
-    const isUpload = state.source_type === "upload";
+    const isVideo = videoExts.test(state.source) && state.source_type === "upload";
 
     // STEP 2: Logic Branching
-    if (isUpload && isVideoFile) {
+    if (isVideo) {
       // HANDLE UPLOADED VIDEO
       if (iframeEl) iframeEl.style.display = "none";
       if (videoEl) {
         videoEl.style.display = "block";
-        const src = "/api/filmtv/stream";
+        const src = state.stream_url;
 
         if (videoEl.src !== window.location.origin + src) {
           videoEl.src = src;
@@ -133,17 +131,13 @@ const FilmTV = (() => {
         // Force display:block before setting src to ensure rendering engine wakes up
         iframeEl.style.display = "block";
 
-        let displaySource = state.source;
+        let displaySource = state.stream_url;
 
-        if (isUpload) {
-          // Document Upload
-          const streamUrl = window.location.origin + "/api/filmtv/stream";
+        if (state.source_type === "upload") {
+          // Document Upload (PDFs, Word, etc.)
           if (/\.(doc|docx|xls|xlsx|ppt|pptx)$/i.test(state.source)) {
             // Office docs via Microsoft viewer
-            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
-          } else {
-            // PDFs or Text files can be rendered directly
-            displaySource = streamUrl;
+            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(window.location.origin + state.stream_url)}`;
           }
         } else {
           // YouTube / Web URL Transform
@@ -171,6 +165,7 @@ const FilmTV = (() => {
     if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "Hosting Workspace (Synced)" : "Watching Workspace (Synced)");
   }
+
 
 
 
