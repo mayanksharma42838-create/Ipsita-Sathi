@@ -20,13 +20,14 @@ const FilmTV = (() => {
       videoEl = document.getElementById("filmtvVideo");
     }
 
-    if (!iframeEl && containerEl) {
+    const iframeContainer = document.getElementById("filmtvIframeContainer");
+    if (iframeContainer && !iframeEl) {
       iframeEl = document.createElement("iframe");
       iframeEl.className = "filmtv-iframe";
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-same-origin");
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-same-origin allow-modals");
       iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
       iframeEl.style.cssText = "width:100%; height:100%; border:none; display:block;";
-      containerEl.appendChild(iframeEl);
+      iframeContainer.appendChild(iframeEl);
     }
 
     setupShareHandlers();
@@ -125,12 +126,12 @@ const FilmTV = (() => {
     const empty = document.getElementById("filmtvEmpty");
     if (empty) empty.style.display = "none";
 
-    const targetContainer = document.getElementById("filmtvIframeContainer") || containerEl;
+    const iframeContainer = document.getElementById("filmtvIframeContainer");
 
     const sourceStr = (state.source || "").toLowerCase();
     const streamUrlStr = (state.stream_url || "").toLowerCase();
 
-    // Sirf asli video files (mp4, webm, etc.) ke liye video element use hoga
+    // Sirf asli video files ke liye video element use hoga
     const isVideoUpload = (
       state.source_type === "upload" && (
         sourceStr.endsWith(".mp4") || sourceStr.endsWith(".webm") ||
@@ -140,8 +141,7 @@ const FilmTV = (() => {
     );
 
     if (isVideoUpload && videoEl) {
-      if (iframeEl) iframeEl.style.display = "none";
-      if (targetContainer) targetContainer.style.display = "none";
+      if (iframeContainer) iframeContainer.style.display = "none";
 
       videoEl.style.display = "block";
       const tokenVal = getToken();
@@ -167,12 +167,15 @@ const FilmTV = (() => {
 
       videoEl.controls = isHost;
     } else {
-      // YouTube, web links, PDFs aur documents ke liye iframe container use hoga
+      // PDFs, documents, aur YouTube ke liye iframe container display hoga
       if (videoEl) {
         videoEl.pause();
         videoEl.style.display = "none";
       }
-      if (targetContainer) targetContainer.style.display = "block";
+
+      if (iframeContainer) {
+        iframeContainer.style.display = "block";
+      }
 
       if (iframeEl) {
         iframeEl.style.display = "block";
@@ -185,8 +188,8 @@ const FilmTV = (() => {
           const tokenStr = tokenVal ? `?token=${encodeURIComponent(tokenVal)}` : "";
           const streamUrl = window.location.origin + state.stream_url + tokenStr;
 
-          if (sourceStr.endsWith(".pdf")) {
-            displaySource = streamUrl; // PDFs browser mein direct render honge
+          if (sourceStr.endsWith(".pdf") || sourceStr.includes(".pdf")) {
+            displaySource = streamUrl;
           } else if (/\.(doc|docx|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(state.source || "")) {
             displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
           } else {
@@ -233,8 +236,8 @@ const FilmTV = (() => {
       videoEl.load();
       videoEl.style.display = "none";
     }
-    const container = document.getElementById("filmtvIframeContainer") || containerEl;
-    if (container) container.style.display = "none";
+    const iframeContainer = document.getElementById("filmtvIframeContainer");
+    if (iframeContainer) iframeContainer.style.display = "none";
 
     const title = document.getElementById("filmtvTitle");
     if (title) title.textContent = "FilmTV Watch Party";
