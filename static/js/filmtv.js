@@ -18,17 +18,6 @@ const FilmTV = (() => {
 
     if (!videoEl) {
       videoEl = document.getElementById("filmtvVideo");
-      if (videoEl) {
-        videoEl.addEventListener("play", () => {
-          if (!applyingRemote && isHost) emitControl("play");
-        });
-        videoEl.addEventListener("pause", () => {
-          if (!applyingRemote && isHost) emitControl("pause");
-        });
-        videoEl.addEventListener("seeked", () => {
-          if (!applyingRemote && isHost) emitControl("seek");
-        });
-      }
     }
 
     if (!iframeEl && containerEl) {
@@ -90,7 +79,7 @@ const FilmTV = (() => {
               "Content-Type": "application/json",
               "X-Session-Token": getToken() || ""
             },
-            body: JSON.stringify({ source: val, source_type: "url" })
+            body: JSON.stringify({ source: val, source_type: "url", title: val })
           });
           const data = await res.json();
           if (!res.ok) {
@@ -138,48 +127,47 @@ const FilmTV = (() => {
 
     const targetContainer = document.getElementById("filmtvIframeContainer") || containerEl;
 
-    // Advanced Video Upload Detection Logic
     const sourceStr = (state.source || "").toLowerCase();
     const streamUrlStr = (state.stream_url || "").toLowerCase();
 
+    // Sirf asli video files (mp4, webm, etc.) ke liye video element use hoga
     const isVideoUpload = (
       state.source_type === "upload" && (
-        streamUrlStr.includes("stream") ||
         sourceStr.endsWith(".mp4") || sourceStr.endsWith(".webm") ||
         sourceStr.endsWith(".ogg") || sourceStr.endsWith(".mov") ||
-        sourceStr.endsWith(".mkv") || sourceStr.endsWith(".m4v") ||
-        sourceStr.includes("media_storage")
+        sourceStr.endsWith(".mkv") || sourceStr.endsWith(".m4v")
       )
-    ) || streamUrlStr === "/api/filmtv/stream";
+    );
 
-    if (isVideoUpload) {
+    if (isVideoUpload && videoEl) {
       if (iframeEl) iframeEl.style.display = "none";
       if (targetContainer) targetContainer.style.display = "none";
 
-      if (videoEl) {
-        videoEl.style.display = "block";
-        const tokenVal = getToken();
-        const tokenStr = tokenVal ? `?token=${encodeURIComponent(tokenVal)}` : "";
-        const src = (state.stream_url || "/api/filmtv/stream") + tokenStr;
+      videoEl.style.display = "block";
+      const tokenVal = getToken();
+      const tokenStr = tokenVal ? `?token=${encodeURIComponent(tokenVal)}` : "";
+      const src = (state.stream_url || "/api/filmtv/stream") + tokenStr;
 
-        if (!videoEl.src.includes("stream")) {
-          videoEl.src = src;
-          videoEl.load();
-        }
-
-        applyingRemote = true;
-        if (Math.abs(videoEl.currentTime - (state.position || 0)) > 1.5) {
-          videoEl.currentTime = state.position || 0;
-        }
-
-        if (state.playing) {
-          videoEl.play().catch((err) => console.log("Playback info:", err));
-        } else {
-          videoEl.pause();
-        }
-        applyingRemote = false;
+      if (!videoEl.src.includes("stream")) {
+        videoEl.src = src;
+        videoEl.load();
       }
+
+      applyingRemote = true;
+      if (Math.abs(videoEl.currentTime - (state.position || 0)) > 1.5) {
+        videoEl.currentTime = state.position || 0;
+      }
+
+      if (state.playing) {
+        videoEl.play().catch((err) => console.log("Playback info:", err));
+      } else {
+        videoEl.pause();
+      }
+      applyingRemote = false;
+
+      videoEl.controls = isHost;
     } else {
+      // YouTube, web links, PDFs aur documents ke liye iframe container use hoga
       if (videoEl) {
         videoEl.pause();
         videoEl.style.display = "none";
@@ -197,7 +185,9 @@ const FilmTV = (() => {
           const tokenStr = tokenVal ? `?token=${encodeURIComponent(tokenVal)}` : "";
           const streamUrl = window.location.origin + state.stream_url + tokenStr;
 
-          if (/\.(doc|docx|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(state.source || "")) {
+          if (sourceStr.endsWith(".pdf")) {
+            displaySource = streamUrl; // PDFs browser mein direct render honge
+          } else if (/\.(doc|docx|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(state.source || "")) {
             displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
           } else {
             displaySource = streamUrl;
@@ -232,7 +222,6 @@ const FilmTV = (() => {
       }
     }
 
-    if (videoEl) videoEl.controls = isHost;
     updateStatusBadge(isHost ? "♡ hosting (synced)" : "♡ watching (synced)");
   }
 
