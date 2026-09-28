@@ -94,10 +94,13 @@ def create_app(config_class=Config):
     def security_headers(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         response.headers["Pragma"] = "no-cache"
-        response.headers["X-Frame-Options"] = "DENY"
+        # FIXED: Changed from DENY to SAMEORIGIN so internal iframe embedding works perfectly
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "display-capture=(), camera=(), microphone=(self)"
+        
+        # FIXED: Added blob: and all required youtube/office viewer domains to frame-src
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://cdn.socket.io https://cdnjs.cloudflare.com; "
@@ -106,7 +109,7 @@ def create_app(config_class=Config):
             "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com https://picsum.photos https://*.picsum.photos; "
             "media-src 'self' blob: https:; "
             "connect-src 'self' ws: wss: https://cdn.socket.io https://cdnjs.cloudflare.com; "
-            "frame-src https://www.instagram.com https://www.youtube.com https://*.youtube.com https://*.google.com https://docs.google.com https://view.officeapps.live.com; "
+            "frame-src 'self' blob: https://www.instagram.com https://www.youtube.com https://*.youtube.com https://youtube.com https://youtu.be https://*.google.com https://docs.google.com https://view.officeapps.live.com; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "
@@ -226,3 +229,4 @@ def _start_expiry_sweeper(app: Flask) -> None:
                     db.session.rollback()
 
     socketio.start_background_task(loop)
+    
