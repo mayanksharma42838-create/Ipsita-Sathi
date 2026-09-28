@@ -10,7 +10,7 @@ from pathlib import Path
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 from werkzeug.utils import secure_filename
 
-from app.auth_helpers import login_required
+from app.auth_helpers import login_required, get_member_from_request
 from app.extensions import db, socketio
 from app.models import Message, utcnow
 from app.security import (
@@ -193,7 +193,6 @@ def upload_media():
 
     original = secure_filename(f.filename or "upload.bin")
     ext = Path(original).suffix.lower() or ".bin"
-    # Client-side E2E encrypts media → .enc/.bin opaque blobs are expected
     allowed = current_app.config["ALLOWED_IMAGE_EXT"] | current_app.config["ALLOWED_AUDIO_EXT"] | {
         ".bin",
         ".enc",
@@ -207,7 +206,6 @@ def upload_media():
     if size <= 0 or size > current_app.config["CHAT_MEDIA_MAX_BYTES"]:
         return jsonify({"error": "file too large or empty"}), 400
 
-    # Opaque encrypted payloads skip magic checks; raw image/audio still sniffed
     if ext not in {".bin", ".enc"}:
         header = read_upload_header(f, 32)
         if msg_type == "image" and not sniff_image_ext(header):
@@ -256,7 +254,6 @@ def get_media(message_id: int):
         return jsonify({"error": "not found"}), 404
     if not os.path.isfile(msg.media_path):
         return jsonify({"error": "file missing"}), 404
-    # Path must stay under uploads dir (no traversal)
     uploads = Path(current_app.config["UPLOADS_DIR"]).resolve()
     try:
         Path(msg.media_path).resolve().relative_to(uploads)
@@ -276,7 +273,7 @@ def set_theme():
     preset = (data.get("theme_preset") or "").strip()
     custom_url = (data.get("custom_url") or "").strip()
     opacity = data.get("opacity")
-    allowed = {"blush", "midnight", "forest", "sand", "lavender", "custom"}
+    allowed = {"blush", "midnight", "forest", "sand", "lavender", "crimson", "ocean", "emerald", "cyberpunk", "custom"}
 
     if preset and preset not in allowed:
         return jsonify({"error": "invalid theme_preset"}), 400
@@ -321,7 +318,6 @@ def search_unsplash():
     
     key = os.environ.get("UNSPLASH_API_KEY")
     if not key:
-        # Fallback to source.unsplash.com if no key is provided
         results = []
         import random
         for _ in range(9):
@@ -371,7 +367,6 @@ def upload_theme():
     if not sniffed:
         return jsonify({"error": "File content is not a valid image"}), 400
 
-    # Ensure extension matches sniffed content for consistency
     if sniffed == ".jpg" and ext not in {".jpg", ".jpeg"}:
         ext = ".jpg"
     elif sniffed != ext:
@@ -390,7 +385,6 @@ def upload_theme():
     except Exception as e:
         return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
 
-    # Clean up old theme if it was a custom upload
     if g.room.theme_path and os.path.exists(g.room.theme_path) and "theme_" in g.room.theme_path:
         try:
             Path(g.room.theme_path).unlink(missing_ok=True)
@@ -553,7 +547,6 @@ def get_doodle():
 @login_required
 def filmtv_state():
     try:
-        # Legacy cleanup for old source types if necessary
         if g.room.filmtv_source_type == "youtube":
             g.room.filmtv_source_type = "url"
             db.session.commit()
@@ -568,7 +561,7 @@ def filmtv_state():
 @bp.post("/filmtv/load")
 @login_required
 def filmtv_load():
-    """Load a shared URL (video, doc, or app) into the workspace."""
+    """Load a shared URL (video, doc, or app) into the workspace with auto YouTube embedding conversion."""
     limited = rate_or_429("filmtv_load", *current_app.config["RL_FILMTV"])
     if limited:
         return limited
@@ -580,9 +573,22 @@ def filmtv_load():
     if not url:
         return jsonify({"error": "url required"}), 400
 
-        # Relaxed validation for general workspace support
     if not url.startswith("https://"):
         return jsonify({"error": "Only HTTPS URLs are allowed for security"}), 400
+
+    # Auto convert standard YouTube links to embed format
+    if "youtube.com/watch?v=" in url:
+        try:
+            video_id = url.split("watch?v=")[1].split("&")[0]
+            url = f"https://www.youtube.com/embed/{video_id}"
+        except Exception:
+            pass
+    elif "youtu.be/" in url:
+        try:
+            video_id = url.split("youtu.be/")[1].split("?")[0]
+            url = f"https://www.youtube.com/embed/{video_id}"
+        except Exception:
+            pass
 
     g.room.filmtv_source_type = "url"
     g.room.filmtv_source = url
@@ -605,7 +611,7 @@ def filmtv_load():
 @bp.post("/filmtv/upload")
 @login_required
 def filmtv_upload():
-    """Upload a local movie/video for shared playback."""
+    """Upload a local movie/video or document for shared playback."""
     limited = rate_or_429("filmtv_upload", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
@@ -625,9 +631,7 @@ def filmtv_upload():
         if ext not in allowed_all:
             return jsonify({"error": f"file type not allowed ({ext})"}), 400
 
-        # Optional: Magic-byte sniffing for extra security if it's a video
         header = read_upload_header(f, 32)
-        is_video = sniff_video_ok(header)
         
         f.seek(0, os.SEEK_END)
         size = f.tell()
@@ -635,7 +639,6 @@ def filmtv_upload():
         if size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
             return jsonify({"error": "file too large or empty"}), 400
 
-        # Clean up old upload if exists
         if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
             try:
                 old_path = Path(g.room.filmtv_source)
@@ -673,12 +676,9 @@ def filmtv_upload():
         return jsonify({"error": "Internal server error during upload"}), 500
 
 
-
-
 @bp.get("/filmtv/stream")
 def filmtv_stream():
     """Stream uploaded media with support for byte-range requests."""
-    # Custom auth handling for streaming media to support 3rd party viewers (like Office Viewer)
     member = get_member_from_request()
     if not member:
         return jsonify({"error": "Unauthorized stream request"}), 401
@@ -695,18 +695,14 @@ def filmtv_stream():
             
         filmtv_dir = Path(current_app.config["FILMTV_DIR"]).resolve()
         try:
-            # Prevent directory traversal
             file_path.resolve().relative_to(filmtv_dir)
         except ValueError:
             return jsonify({"error": "Unauthorized path"}), 403
             
-        # Support byte-range requests for videos via `conditional=True`
         return send_file(str(file_path), conditional=True)
     except Exception as e:
         logger.error(f"Streaming error: {e}")
         return jsonify({"error": "Streaming failed"}), 500
-
-
 
 
 @bp.post("/filmtv/clear")
