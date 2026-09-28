@@ -56,36 +56,12 @@ def create_app(config_class=Config):
     def index():
         return render_template("index.html")
 
-    # --- BULLETPROOF FILM-TV FALLBACK ROUTES TO PERMANENTLY PREVENT 404 ERRORS ---
-    @app.route("/api/filmtv/source", methods=["POST"])
-    def fallback_filmtv_source():
-        try:
-            data = request.get_json() or {}
-            source = data.get("source") or data.get("url")
-            source_type = data.get("source_type", "url")
-            title = data.get("title", "Shared Workspace")
-            
-            state_payload = {
-                "source": source,
-                "stream_url": source,
-                "source_type": source_type,
-                "title": title,
-                "playing": False,
-                "position": 0
-            }
-            return jsonify({"ok": True, "state": state_payload})
-        except Exception as e:
-            return jsonify({"ok": False, "error": str(e)}), 400
-
-    @app.route("/api/filmtv/load", methods=["POST"])
-    def fallback_filmtv_load():
-        return fallback_filmtv_source()
-
-    @app.route("/api/filmtv/state", methods=["GET"])
+    # --- BULLETPROOF FILM-TV SAFE FALLBACK ROUTES (Only active if blueprint route is bypassed) ---
+    @app.route("/api/filmtv/state_fallback", methods=["GET"])
     def fallback_filmtv_state():
         return jsonify({"state": None})
 
-    @app.route("/api/filmtv/clear", methods=["POST"])
+    @app.route("/api/filmtv/clear_fallback", methods=["POST"])
     def fallback_filmtv_clear():
         return jsonify({"ok": True, "state": None})
     # ---------------------------------------------------------------------------
@@ -94,13 +70,11 @@ def create_app(config_class=Config):
     def security_headers(response):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         response.headers["Pragma"] = "no-cache"
-        # FIXED: Changed from DENY to SAMEORIGIN so internal iframe embedding works perfectly
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Permissions-Policy"] = "display-capture=(), camera=(), microphone=(self)"
         
-        # FIXED: Added blob: and all required youtube/office viewer domains to frame-src
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
             "script-src 'self' https://cdn.socket.io https://cdnjs.cloudflare.com; "
@@ -229,4 +203,4 @@ def _start_expiry_sweeper(app: Flask) -> None:
                     db.session.rollback()
 
     socketio.start_background_task(loop)
-    
+        
