@@ -13,6 +13,7 @@ const App = (() => {
     token: null,
     memberId: null,
     displayName: null,
+    phoneNumber: null,
     roomId: null,
     password: null,
     key: null,
@@ -58,74 +59,42 @@ const App = (() => {
     if (el) el.textContent = msg || "";
   }
 
-  function genRoomId() {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let res = "room-";
-    for (let i = 0; i < 8; i++) res += chars.charAt(Math.floor(Math.random() * chars.length));
-    return res;
+  function normalizePhoneNumber(value) {
+    return String(value || "").trim().replace(/[\s().-]/g, "").replace(/^\+/, "");
   }
 
-  function validateCreate() {
-    const id = $("#createRoomId")?.value.trim();
-    const pw = $("#createPassword")?.value;
-    const name = $("#createName")?.value.trim();
-    let err = "";
-    if (!id) err = "Room ID is required";
-    else if (id.length < 4) err = "Room ID too short";
-    else if (!pw) err = "Password is required";
-    else if (pw.length < 12) err = "Password must be at least 12 characters";
-    else if (!name) err = "Display name is required";
-    showAuthError(err);
-    return !err;
-  }
-
-  async function createRoom() {
-    if (!validateCreate()) return;
+  async function loginRoom(event) {
+    event?.preventDefault();
     showAuthError("");
-    const roomId = $("#createRoomId").value.trim();
-    const password = $("#createPassword").value;
-    const displayName = $("#createName").value.trim() || "Partner 1";
-    try {
-      const data = await fetch("/api/auth/create-room", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room_id: roomId, password, display_name: displayName }),
-      }).then(async (r) => {
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error || "Create failed");
-        return j;
-      });
-      await enterRoom(data, password);
-    } catch (e) {
-      showAuthError(e.message);
-    }
-  }
-
-  async function joinRoom() {
-    showAuthError("");
-    const roomId = $("#joinRoomId").value.trim();
-    const password = $("#joinPassword").value;
-    const displayName = $("#joinName").value.trim() || "Partner 2";
+    const phoneNumber = $("#phoneNumber")?.value.trim() || "";
+    const password = $("#roomPassword")?.value || "";
+    const legacyRoomId = $("#legacyRoomId")?.value.trim();
     const saved = OfflineStore.getSession();
-    const resumeToken =
-      saved && saved.token && saved.roomId === roomId && saved.displayName === displayName
-        ? saved.token
-        : undefined;
+    const loginButton = $("#btnLogin");
+    if (loginButton) loginButton.disabled = true;
+
     try {
-      const payload = { room_id: roomId, password, display_name: displayName };
-      if (resumeToken) payload.resume_token = resumeToken;
-      const data = await fetch("/api/auth/join-room", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).then(async (r) => {
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error || "Join failed");
-        return j;
+        credentials: "include",
+        body: JSON.stringify({
+          phone_number: phoneNumber,
+          password,
+          legacy_room_id: legacyRoomId || undefined,
+          resume_token:
+            saved?.token && normalizePhoneNumber(saved.phoneNumber) === normalizePhoneNumber(phoneNumber)
+              ? saved.token
+              : undefined,
+        }),
       });
-      await enterRoom(data, password);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || `Login failed (${response.status})`);
+      await enterRoom(data, password, data.phone_number || phoneNumber);
     } catch (e) {
       showAuthError(e.message);
+    } finally {
+      if (loginButton) loginButton.disabled = false;
     }
   }
 
@@ -152,6 +121,7 @@ const App = (() => {
     state.token = null;
     state.memberId = null;
     state.displayName = null;
+    state.phoneNumber = null;
     state.roomId = null;
     state.password = null;
     state.key = null;
@@ -161,10 +131,11 @@ const App = (() => {
     closeModal("settingsModal");
   }
 
-  async function enterRoom(data, password) {
+  async function enterRoom(data, password, phoneNumber = data.phone_number || "") {
     state.token = data.session_token;
     state.memberId = data.member_id;
     state.displayName = data.display_name;
+    state.phoneNumber = phoneNumber;
     state.roomId = data.room_id;
     state.password = password;
 
@@ -188,11 +159,12 @@ const App = (() => {
       memberId: state.memberId,
       displayName: state.displayName,
       roomId: state.roomId,
+      phoneNumber: state.phoneNumber,
     });
 
     $("#authView")?.classList.add("hidden");
     $("#chatView")?.classList.add("active");
-    if ($("#roomLabel")) $("#roomLabel").textContent = state.roomId;
+    if ($("#roomLabel")) $("#roomLabel").textContent = state.phoneNumber ? "Private room" : state.roomId;
     if ($("#meLabel")) $("#meLabel").textContent = state.displayName;
 
     initFilmTV();
@@ -200,6 +172,7 @@ const App = (() => {
     connectSocket();
     await loadMessages();
     await loadGallery();
+    await loadDoodle();
     await flushOutbox();
 
     if (data.theme_preset === "custom") {
@@ -406,24 +379,20 @@ const App = (() => {
     const img = $("#zoomImage");
     const viewport = $(".zoom-viewport");
     if (!img || !viewport) return;
-
     const apply = () => {
       img.style.transform = `translate(${zoomState.x}px, ${zoomState.y}px) scale(${zoomState.scale})`;
     };
-
     $("#btnZoomIn")?.addEventListener("click", () => { zoomState.scale *= 1.2; apply(); });
     $("#btnZoomOut")?.addEventListener("click", () => { zoomState.scale /= 1.2; apply(); });
     $("#btnZoomReset")?.addEventListener("click", () => {
       zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
       apply();
     });
-
     viewport.addEventListener("mousedown", (e) => {
       zoomState.dragging = true;
       zoomState.lastX = e.clientX - zoomState.x;
       zoomState.lastY = e.clientY - zoomState.y;
     });
-
     window.addEventListener("mousemove", (e) => {
       if (!zoomState.dragging) return;
       zoomState.x = e.clientX - zoomState.lastX;
@@ -432,7 +401,6 @@ const App = (() => {
     });
 
     window.addEventListener("mouseup", () => { zoomState.dragging = false; });
-
     viewport.addEventListener("wheel", (e) => {
       e.preventDefault();
       const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -487,6 +455,21 @@ const App = (() => {
       }
     } catch (e) {
       grid.innerHTML = `<p class="err">${e.message}</p>`;
+    }
+  }
+
+  async function loadDoodle() {
+    if (!state.token) return;
+    try {
+      const response = await fetch("/api/doodle/latest", {
+        credentials: "include",
+        headers: headers(false),
+      });
+      if (response.status === 404) return;
+      if (!response.ok) throw new Error(`Doodle restore failed (${response.status})`);
+      await DoodleBoard.loadImage(await response.blob());
+    } catch (error) {
+      console.warn("Saved room doodle could not be restored:", error);
     }
   }
 
@@ -900,28 +883,8 @@ const App = (() => {
   }
 
   function bindUI() {
-    const roomIdInput = $("#createRoomId");
-    if (roomIdInput) roomIdInput.value = genRoomId();
+    $("#loginForm")?.addEventListener("submit", loginRoom);
 
-    $("#createRoomId")?.addEventListener("input", validateCreate);
-    $("#createPassword")?.addEventListener("input", validateCreate);
-    $("#createName")?.addEventListener("input", validateCreate);
-
-    $$(".tabs button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        $$
-          (".tabs button").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        const tab = btn.dataset.tab;
-        const createForm = $("#createForm");
-        const joinForm = $("#joinForm");
-        if (createForm) createForm.style.display = tab === "create" ? "block" : "none";
-        if (joinForm) joinForm.style.display = tab === "join" ? "block" : "none";
-      });
-    });
-
-    $("#btnCreate")?.addEventListener("click", createRoom);
-    $("#btnJoin")?.addEventListener("click", joinRoom);
     $("#btnSend")?.addEventListener("click", sendText);
 
     $("#composerInput")?.addEventListener("keydown", (e) => {
@@ -1080,47 +1043,15 @@ const App = (() => {
       }
 
       const data = await res.json();
-      const password = prompt("Enter room password to unlock encrypted messages:");
-      if (!password) return;
-
-      state.token = data.session_token;
-      state.memberId = data.member_id;
-      state.displayName = data.display_name;
-      state.roomId = data.room_id;
-      state.password = password;
-      const saltBase64 = data.salt;
-      let salt = undefined;
-      if (saltBase64) {
-        salt = CryptoClient.b64decode(saltBase64);
+      if (!data.authenticated) {
+        OfflineStore.clearSession();
+        return;
       }
-      state.key = await CryptoClient.deriveKey(state.roomId, password, salt);
-
-      if (data.theme_opacity !== undefined) {
-        document.documentElement.style.setProperty("--overlay-opacity", data.theme_opacity);
-        if ($("#themeOpacity")) {
-          $("#themeOpacity").value = Math.round(data.theme_opacity * 100);
-          $("#themeOpacityVal").textContent = Math.round(data.theme_opacity * 100) + "%";
-        }
-      }
-
-      $("#authView")?.classList.add("hidden");
-      $("#chatView")?.classList.add("active");
-      if ($("#roomLabel")) $("#roomLabel").textContent = state.roomId;
-      if ($("#meLabel")) $("#meLabel").textContent = state.displayName;
-
-      initFilmTV();
-      initZoom();
-      connectSocket();
-      await loadMessages();
-      await loadGallery();
-      try {
-        const me = await api("/api/auth/me");
-        if (me.filmtv) await FilmTV.loadState(me.filmtv, state.memberId);
-      } catch {
-        /* optional */
+      if ($("#phoneNumber") && data.phone_number) {
+        $("#phoneNumber").value = data.phone_number;
       }
     } catch {
-      /* stay on auth */
+      // Keep the login form available when the network is offline.
     }
   }
 

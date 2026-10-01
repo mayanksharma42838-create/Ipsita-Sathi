@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -17,6 +18,26 @@ for d in (INSTANCE_DIR, MEDIA_DIR, THEMES_DIR, UPLOADS_DIR, DOODLES_DIR, FILMTV_
     d.mkdir(parents=True, exist_ok=True)
 
 
+def _stable_secret_key() -> str:
+    configured = os.environ.get("SECRET_KEY")
+    if configured:
+        return configured
+
+    secret_path = INSTANCE_DIR / "flask_secret.key"
+    try:
+        descriptor = os.open(secret_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError:
+        secret = secret_path.read_text(encoding="utf-8").strip()
+        if len(secret) < 32:
+            raise RuntimeError("The persisted Flask secret key is invalid")
+        return secret
+
+    secret = secrets.token_hex(32)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as secret_file:
+        secret_file.write(secret)
+    return secret
+
+
 def _cors_origins() -> list[str] | str:
     raw = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5000")
     if isinstance(raw, str) and "," in raw:
@@ -26,7 +47,7 @@ def _cors_origins() -> list[str] | str:
 
 
 class Config:
-    SECRET_KEY = os.environ.get("SECRET_KEY") or os.urandom(32).hex()
+    SECRET_KEY = _stable_secret_key()
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "DATABASE_URL", f"sqlite:///{INSTANCE_DIR / 'ipsita_sathi.db'}"
     )

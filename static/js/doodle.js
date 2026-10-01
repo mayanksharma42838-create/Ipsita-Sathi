@@ -93,6 +93,30 @@ const DoodleBoard = (() => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
+  function loadImage(blob) {
+    if (!canvas || !ctx || !(blob instanceof Blob)) return Promise.resolve(false);
+    const imageUrl = URL.createObjectURL(blob);
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => {
+        const ratio = window.devicePixelRatio || 1;
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        URL.revokeObjectURL(imageUrl);
+        resolve(true);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(imageUrl);
+        reject(new Error("Saved doodle could not be displayed"));
+      };
+      image.src = imageUrl;
+    });
+  }
+
   function setColor(c) {
     color = c;
   }
@@ -107,5 +131,5 @@ const DoodleBoard = (() => {
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
-  return { init, applyRemote, clear, setColor, setWidth, setTool, toBlob };
+  return { init, applyRemote, clear, loadImage, setColor, setWidth, setTool, toBlob };
 })();

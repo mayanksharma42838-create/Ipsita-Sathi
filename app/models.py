@@ -16,6 +16,7 @@ class Room(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     room_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    phone_number = db.Column(db.String(20), unique=True, nullable=True, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     salt = db.Column(db.LargeBinary(16), nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
@@ -102,6 +103,16 @@ class Message(db.Model):
 
     room = db.relationship("Room", back_populates="messages")
     sender = db.relationship("Member")
+
+    def is_expired(self) -> bool:
+        if self.deleted:
+            return True
+        if not self.expires_at:
+            return False
+        expires_at = self.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        return expires_at <= utcnow()
 
 
 class FilmTVAnnotation(db.Model):

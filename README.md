@@ -1,17 +1,17 @@
 # Ipsita-Sathi
 
-Secure **2-person private room** — Shared Room ID + Secret Password. No public rooms, no AI chatbot.
+Secure **2-person private room** — Phone number + Room Password. No public rooms, no AI chatbot.
 
 ## Features
 
-1. **Private room auth** — Flask/SQLAlchemy; max 2 members; password hashed server-side  
+1. **Permanent phone login** — each phone number maps to one persistent room; room passwords are Werkzeug-hashed; max 2 active members
 2. **Display names & themes** — presets + custom background upload  
 3. **Rich messaging** — text, voice notes, photos; files under `media_storage/`  
 4. **Privacy** — no export APIs; screenshot / capture discouragement on the client  
 5. **Instagram sync** — co-watch Reel/post URLs in realtime; optional encrypted session note  
-6. **Disappearing messages** — TTL deletes from UI + DB  
-7. **Secret doodle board** — shared canvas with local PNG save  
-8. **E2E encryption** — AES-GCM on the client (room ID + password); offline outbox sync  
+6. **Disappearing messages** — messages expire only when a TTL is explicitly selected
+7. **Secret doodle board** — shared canvas saved to room storage and restored on login
+8. **E2E encryption** — encrypted on the client using the stable room key and salt; offline outbox sync
 9. **Capacitor** — Android/iOS packaging via `package.json` scripts  
 
 ## FilmTV uploads
@@ -35,8 +35,17 @@ python run.py
 
 Open http://127.0.0.1:5000
 
-1. Partner A: **Create room** (Room ID + password + display name)  
-2. Partner B: **Join room** with the same credentials  
+1. Partner A: enter a phone number and a strong room password. A new private room is created automatically.
+2. Partner B: enter the same phone number and room password to take the second private-room seat.
+3. Returning members use the same credentials; the existing room, history, theme, media, and saved doodle are restored.
+4. Existing rooms made with the old login can be linked once using their old Room ID and password.
+
+For authentication tests, install the development requirements and run `python -m pytest`:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
 
 ## Mobile (Capacitor)
 

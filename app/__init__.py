@@ -109,6 +109,7 @@ def _ensure_schema_patches() -> None:
     from sqlalchemy import text
 
     cols = {
+        "phone_number": "VARCHAR(20)",
         "filmtv_source_type": "VARCHAR(32)",
         "filmtv_source": "VARCHAR(2048)",
         "filmtv_title": "VARCHAR(256)",
@@ -123,6 +124,9 @@ def _ensure_schema_patches() -> None:
         for name, typedef in cols.items():
             if name not in existing:
                 db.session.execute(text(f"ALTER TABLE rooms ADD COLUMN {name} {typedef}"))
+        db.session.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_rooms_phone_number ON rooms (phone_number)")
+        )
         db.session.commit()
     except Exception:
         db.session.rollback()

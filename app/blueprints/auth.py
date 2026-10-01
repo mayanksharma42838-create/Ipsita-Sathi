@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 import secrets
 import threading
 from datetime import timedelta, timezone
@@ -28,6 +29,154 @@ def _begin_immediate() -> None:
         db.session.execute(text("BEGIN IMMEDIATE"))
     except Exception:
         pass
+
+
+def _normalize_phone_number(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    compact = re.sub(r"[\s().-]", "", value.strip())
+    if compact.startswith("+"):
+        compact = compact[1:]
+    if not compact.isascii() or not compact.isdigit() or not 7 <= len(compact) <= 15:
+        return None
+    return compact
+
+
+def _next_partner_name(members: list[Member], max_members: int) -> str:
+    taken = {member.display_name for member in members}
+    for slot in range(1, max_members + 1):
+        candidate = f"Partner {slot}"
+        if candidate not in taken:
+            return candidate
+    return f"Partner {len(members) + 1}"
+
+
+def _member_session_expired(member: Member, now, idle_seconds: int) -> bool:
+    last_seen = member.last_seen
+    if last_seen.tzinfo is None:
+        last_seen = last_seen.replace(tzinfo=timezone.utc)
+    return (now - last_seen).total_seconds() > idle_seconds
+
+
+def _login_payload(room: Room, member: Member, phone_number: str, max_members: int):
+    session["member_token"] = member.session_token
+    return jsonify({
+        "ok": True,
+        "authenticated": True,
+        "phone_number": phone_number,
+        "room_id": room.room_id,
+        "member_id": member.id,
+        "display_name": member.display_name,
+        "session_token": member.session_token,
+        "salt": base64.b64encode(room.salt).decode("utf-8"),
+        "slots_left": max(0, max_members - Member.query.filter_by(room_pk=room.id).count()),
+        "theme_preset": room.theme_preset,
+        "theme_url": "/api/theme/background" if room.theme_preset == "custom" else None,
+        "theme_opacity": room.theme_opacity,
+        "filmtv": room.filmtv_state(),
+        "doodle_url": "/api/doodle/latest" if room.doodle_path else None,
+    })
+
+
+@bp.post("/login")
+def login():
+    limited = rate_or_429("auth_login", *current_app.config["RL_AUTH"])
+    if limited:
+        return limited
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+
+    phone_number = _normalize_phone_number(data.get("phone_number"))
+    password = data.get("password")
+    legacy_room_id = data.get("legacy_room_id")
+    resume_token = data.get("resume_token")
+    if not phone_number:
+        return jsonify({"error": "Enter a valid phone number with 7–15 digits"}), 400
+    if not isinstance(password, str) or not password or len(password) > 256:
+        return jsonify({"error": "Room password is required"}), 400
+    if legacy_room_id is not None and not isinstance(legacy_room_id, str):
+        return jsonify({"error": "legacy_room_id must be a string"}), 400
+    if resume_token is not None and not isinstance(resume_token, str):
+        return jsonify({"error": "resume_token must be a string"}), 400
+
+    with _join_guard:
+        _begin_immediate()
+        try:
+            room = Room.query.filter_by(phone_number=phone_number).first()
+            if room:
+                if not room.check_password(password):
+                    db.session.rollback()
+                    return jsonify({"error": _GENERIC_AUTH_FAIL}), 403
+            elif legacy_room_id:
+                room = Room.query.filter_by(room_id=legacy_room_id.strip(), phone_number=None).first()
+                if not room or not room.check_password(password):
+                    db.session.rollback()
+                    return jsonify({"error": _GENERIC_AUTH_FAIL}), 403
+                room.phone_number = phone_number
+                db.session.flush()
+            else:
+                password_error = validate_password(
+                    password, current_app.config["MIN_PASSWORD_LENGTH"]
+                )
+                if password_error:
+                    db.session.rollback()
+                    return jsonify({"error": password_error}), 400
+                room = Room(
+                    room_id=f"account-{secrets.token_urlsafe(18)}",
+                    phone_number=phone_number,
+                    salt=secrets.token_bytes(16),
+                    theme_opacity=0.92,
+                )
+                room.set_password(password)
+                db.session.add(room)
+                db.session.flush()
+
+            max_members = current_app.config["MAX_ROOM_MEMBERS"]
+            members = (
+                Member.query.filter_by(room_pk=room.id)
+                .order_by(Member.id.asc())
+                .all()
+            )
+            member = next(
+                (item for item in members if resume_token and item.session_token == resume_token),
+                None,
+            )
+            now = utcnow()
+            idle_seconds = current_app.config["SESSION_IDLE_RESUME_SECONDS"]
+            if member is None:
+                member = next(
+                    (
+                        item for item in members
+                        if not item.session_token
+                        or not item.is_online
+                        or _member_session_expired(item, now, idle_seconds)
+                    ),
+                    None,
+                )
+
+            if member is None:
+                if len(members) >= max_members:
+                    db.session.rollback()
+                    return jsonify({"error": "Private room already has two active members"}), 403
+                member = Member(
+                    room_pk=room.id,
+                    display_name=_next_partner_name(members, max_members),
+                )
+                db.session.add(member)
+
+            member.session_token = generate_member_token()
+            member.is_online = True
+            member.last_seen = now
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            return jsonify({"error": "Could not log in. Check the credentials and try again."}), 409
+
+    from app import sockets as socket_mod
+    socket_mod.disconnect_member(member.id)
+    return _login_payload(room, member, phone_number, max_members)
 
 
 @bp.post("/create-room")
@@ -212,9 +361,11 @@ def me():
     return jsonify({
         "member_id": g.member.id,
         "display_name": g.member.display_name,
+        "phone_number": room.phone_number,
         "room_id": room.room_id,
         "theme_preset": room.theme_preset,
-        "theme_path": room.theme_path,
+        "theme_url": "/api/theme/background" if room.theme_preset == "custom" else None,
+        "theme_opacity": room.theme_opacity,
         "members": members,
         "instagram_sync_url": room.instagram_sync_url,
         "filmtv": room.filmtv_state(),
@@ -269,8 +420,13 @@ def session_check():
             "authenticated": True,
             "member_id": member.id,
             "display_name": member.display_name,
+            "phone_number": member.room.phone_number,
             "room_id": member.room.room_id,
             "session_token": member.session_token,
+            "salt": base64.b64encode(member.room.salt).decode("utf-8"),
+            "theme_preset": member.room.theme_preset,
+            "theme_url": "/api/theme/background" if member.room.theme_preset == "custom" else None,
+            "theme_opacity": member.room.theme_opacity,
         }), 200
     except Exception:
         return jsonify({"authenticated": False}), 200

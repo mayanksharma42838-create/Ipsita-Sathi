@@ -44,37 +44,29 @@
 
     <div id="authView">
       <div class="brand">Ipsita-Sathi</div>
-      <p class="tagline">A private room for two hearts. Shared ID + secret password.</p>
+      <p class="tagline">Your private room, ready whenever you return.</p>
       <div class="panel">
-        <div class="tabs">
-          <button type="button" class="active" data-tab="create">Create room</button>
-          <button type="button" data-tab="join">Join room</button>
-        </div>
+        <form id="loginForm" novalidate>
+          <label for="phoneNumber">Phone number</label>
+          <input type="tel" id="phoneNumber" inputmode="tel" autocomplete="tel" required
+            placeholder="+1 555 123 4567" />
+          <label for="roomPassword">Room password</label>
+          <input type="password" id="roomPassword" autocomplete="current-password" required
+            placeholder="Enter your private room password" />
 
-        <div id="createForm">
-          <label>Shared Room ID</label>
-          <input type="text" id="createRoomId" autocomplete="off" placeholder="e.g. our-secret-space" />
-          <label>Secret Password</label>
-          <input type="password" id="createPassword" autocomplete="new-password"
-            placeholder="min 12 characters, mixed" />
-          <label>Your display name</label>
-          <input type="text" id="createName" maxlength="64" placeholder="Your name" />
-          <button type="button" class="btn block" id="btnCreate">Create private room</button>
-        </div>
+          <details class="legacy-room-link">
+            <summary>Link a room created with the old login</summary>
+            <label for="legacyRoomId">Existing room ID (one-time link)</label>
+            <input type="text" id="legacyRoomId" autocomplete="off" maxlength="64"
+              placeholder="Enter the old room ID once" />
+          </details>
 
-        <div id="joinForm" style="display:none;">
-          <label>Shared Room ID</label>
-          <input type="text" id="joinRoomId" autocomplete="off" />
-          <label>Secret Password</label>
-          <input type="password" id="joinPassword" autocomplete="current-password" placeholder="min 12 characters" />
-          <label>Your display name</label>
-          <input type="text" id="joinName" maxlength="64" placeholder="Your name" />
-          <button type="button" class="btn block" id="btnJoin">Enter room</button>
-        </div>
+          <button type="submit" class="btn block" id="btnLogin">Continue to private room</button>
+        </form>
 
         <p class="err" id="authError"></p>
-        <p class="hint">Only two people can join. Messages are end-to-end encrypted with your room password. No public
-          rooms. No AI chatbots. No history export.</p>
+        <p class="hint">The same phone number and room password open your private room on each device. Two people can
+          share a room. Messages stay end-to-end encrypted.</p>
       </div>
     </div>
 
@@ -357,10 +349,10 @@
   <script src="/static/js/crypto.js?v=2.1"></script>
   <script src="/static/js/offline.js?v=2.1"></script>
   <script src="/static/js/privacy.js?v=2.1"></script>
-  <script src="/static/js/doodle.js?v=2.1"></script>
+  <script src="/static/js/doodle.js?v=2.2"></script>
   <script src="/static/js/pdf-viewer.js?v=1.1"></script>
   <script src="/static/js/filmtv.js?v=2.5"></script>
-  <script src="/static/js/app.js?v=2.3"></script>
+  <script src="/static/js/app.js?v=2.4"></script>
 
 </body>
 

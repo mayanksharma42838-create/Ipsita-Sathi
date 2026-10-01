@@ -34,6 +34,16 @@ def _unbind_sid(sid: str) -> int | None:
         return mid
 
 
+def disconnect_member(member_id: int) -> None:
+    with _sid_lock:
+        sids = tuple(_member_to_sids.get(member_id, ()))
+    for sid in sids:
+        try:
+            socketio.server.disconnect(sid, namespace="/")
+        except Exception:
+            _unbind_sid(sid)
+
+
 def _member_from_sid() -> Member | None:
     sid = getattr(request, "sid", None)
     if not sid:
