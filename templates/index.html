@@ -13,7 +13,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Nunito:wght@400;600;700&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/app.css?v=2.1" />
+  <link rel="stylesheet" href="/static/css/app.css?v=2.5" />
   <style>
     /* Custom inline style for adjustable resizable panes in FilmTV mode */
     #roomSplit {
@@ -122,6 +122,38 @@
               <p class="hint">Supports YouTube, Docs, and web apps via interactive iframe.</p>
             </div>
             <div id="filmtvIframeContainer" style="width:100%;height:100%;display:none;"></div>
+            <section id="filmtvDocumentViewer" class="filmtv-document-viewer" aria-label="Shared PDF document" hidden>
+              <div class="filmtv-document-toolbar" role="toolbar" aria-label="Document annotations">
+                <div class="filmtv-document-tools">
+                  <button type="button" class="btn sm ghost" id="filmtvHighlightMode"
+                    aria-pressed="false">Highlight</button>
+                  <button type="button" class="btn sm ghost" id="filmtvUnderlineMode"
+                    aria-pressed="false">Underline</button>
+                  <label for="filmtvAnnotationColor">Color</label>
+                  <select id="filmtvAnnotationColor" aria-label="Annotation color">
+                    <option value="yellow">Yellow</option>
+                    <option value="green">Green</option>
+                    <option value="blue">Blue</option>
+                    <option value="pink">Pink</option>
+                  </select>
+                  <button type="button" class="btn sm ghost" id="filmtvClearAnnotations">Clear marks</button>
+                </div>
+                <div class="filmtv-document-pages">
+                  <button type="button" class="btn sm ghost" id="filmtvPreviousPage" aria-label="Previous page"
+                    disabled>Previous</button>
+                  <span id="filmtvPageLabel" aria-live="polite">Page 0 / 0</span>
+                  <button type="button" class="btn sm ghost" id="filmtvNextPage" aria-label="Next page"
+                    disabled>Next</button>
+                </div>
+              </div>
+              <div id="filmtvPdfViewport" class="filmtv-pdf-viewport">
+                <div id="filmtvPdfPage" class="filmtv-pdf-page">
+                  <canvas id="filmtvPdfCanvas" aria-label="PDF page"></canvas>
+                  <div id="filmtvAnnotationLayer" class="filmtv-annotation-layer"></div>
+                </div>
+                <p id="filmtvPdfStatus" class="filmtv-pdf-status" role="status"></p>
+              </div>
+            </section>
           </div>
 
           <div class="filmtv-dock">
@@ -318,11 +350,13 @@
 
   <!-- Stable cdnjs Socket.IO Client -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script src="/static/js/crypto.js?v=2.1"></script>
   <script src="/static/js/offline.js?v=2.1"></script>
   <script src="/static/js/privacy.js?v=2.1"></script>
   <script src="/static/js/doodle.js?v=2.1"></script>
-  <script src="/static/js/filmtv.js?v=2.1"></script>
+  <script src="/static/js/pdf-viewer.js?v=1.1"></script>
+  <script src="/static/js/filmtv.js?v=2.3"></script>
   <script src="/static/js/app.js?v=2.1"></script>
 
 </body>

@@ -9,6 +9,22 @@ const FilmTV = (() => {
   let getToken = () => null;
   let applyingRemote = false;
   let isHost = false;
+  let remoteControlsSuppressedUntil = 0;
+  let currentVideoSource = null;
+  let latestVideoState = null;
+  let youtubePlayer = null;
+  let youtubeVideoId = null;
+  let youtubePlayerHost = null;
+  let youtubeApiUnavailable = false;
+  let youtubeMonitor = null;
+  let lastYoutubePosition = null;
+  let lastYoutubeSampleAt = 0;
+  let youtubePlayerReady = null;
+  let stateLoadVersion = 0;
+
+  function pdfViewer() {
+    return typeof PdfDocumentViewer === "undefined" ? null : PdfDocumentViewer;
+  }
 
   function init({ container, socket: sock, tokenFn }) {
     console.log("🟢 [FilmTV] Initializing ultra-advanced module...");
@@ -20,28 +36,213 @@ const FilmTV = (() => {
       videoEl = document.getElementById("filmtvVideo");
     }
 
-    const iframeContainer = document.getElementById("filmtvIframeContainer");
-    if (iframeContainer && !iframeEl) {
-      iframeEl = document.createElement("iframe");
-      iframeEl.className = "filmtv-iframe";
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-same-origin allow-modals");
-      iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-      iframeEl.style.cssText = "width:100%; height:100%; border:none; display:block;";
-      iframeContainer.appendChild(iframeEl);
-    }
+    ensureIframe();
+    bindVideoControls();
+    pdfViewer()?.init({ tokenFn: getToken });
 
-    setupShareHandlers();
   }
 
   function setSocket(sock) {
     socket = sock;
   }
 
+  function ensureIframe() {
+    const iframeContainer = document.getElementById("filmtvIframeContainer");
+    if (!iframeContainer) return;
+    if (!iframeEl || !iframeEl.isConnected) {
+      iframeEl = document.createElement("iframe");
+      iframeEl.className = "filmtv-iframe";
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-same-origin allow-modals");
+      iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+      iframeEl.style.cssText = "width:100%; height:100%; border:none; display:block;";
+      iframeContainer.replaceChildren(iframeEl);
+    }
+  }
+
+  function bindVideoControls() {
+    if (!videoEl || videoEl.dataset.filmtvBound) return;
+    videoEl.dataset.filmtvBound = "true";
+    videoEl.addEventListener("play", () => emitControl("play"));
+    videoEl.addEventListener("pause", () => {
+      if (!videoEl.ended) emitControl("pause");
+    });
+    videoEl.addEventListener("seeked", () => emitControl("seek"));
+    videoEl.addEventListener("loadedmetadata", applyLatestVideoState);
+  }
+
+  function suppressRemoteControls() {
+    applyingRemote = true;
+    remoteControlsSuppressedUntil = Date.now() + 1500;
+    window.setTimeout(() => { applyingRemote = false; }, 0);
+  }
+
+  function applyLatestVideoState() {
+    if (!videoEl || !latestVideoState || videoEl.readyState < 1) return;
+    const state = latestVideoState;
+    const target = Number(state.position) || 0;
+    suppressRemoteControls();
+    if (Math.abs(videoEl.currentTime - target) > 1.5) {
+      try {
+        videoEl.currentTime = target;
+      } catch (err) {
+        console.warn("Unable to seek shared video:", err);
+      }
+    }
+    if (state.playing) {
+      videoEl.play().catch((err) => console.info("Playback requires a user gesture:", err));
+    } else {
+      videoEl.pause();
+    }
+  }
+
+  function ensureYouTubeApi() {
+    if (window.YT?.Player) return Promise.resolve(window.YT);
+    if (window.filmTvYouTubeApi) return window.filmTvYouTubeApi;
+
+    window.filmTvYouTubeApi = new Promise((resolve, reject) => {
+      const previousReady = window.onYouTubeIframeAPIReady;
+      const timeoutId = window.setTimeout(() => reject(new Error("YouTube player API timed out")), 15000);
+      window.onYouTubeIframeAPIReady = () => {
+        window.clearTimeout(timeoutId);
+        if (typeof previousReady === "function") previousReady();
+        if (window.YT?.Player) resolve(window.YT);
+        else reject(new Error("YouTube player API failed to initialize"));
+      };
+
+      let script = document.querySelector('script[data-filmtv-youtube-api]');
+      if (!script) {
+        script = document.createElement("script");
+        script.src = "https://www.youtube.com/iframe_api";
+        script.dataset.filmtvYoutubeApi = "true";
+        script.onerror = () => {
+          window.clearTimeout(timeoutId);
+          reject(new Error("Unable to load YouTube player API"));
+        };
+        document.head.appendChild(script);
+      }
+    });
+    return window.filmTvYouTubeApi;
+  }
+
+  function youtubeIdFromUrl(rawUrl) {
+    try {
+      const url = new URL(rawUrl);
+      const host = url.hostname.toLowerCase();
+      if (host === "youtu.be") return url.pathname.split("/").filter(Boolean)[0] || null;
+      if (["youtube.com", "www.youtube.com", "m.youtube.com"].includes(host)) {
+        if (url.pathname === "/watch") return url.searchParams.get("v");
+        const match = url.pathname.match(/^\/(?:embed|shorts)\/([^/]+)/);
+        return match ? match[1] : null;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  function emitYouTubeControl(action, position) {
+    if (applyingRemote || Date.now() < remoteControlsSuppressedUntil || !isHost || !socket) return;
+    socket.emit("filmtv_control", { action, position });
+  }
+
+  function startYouTubeMonitor() {
+    if (youtubeMonitor) window.clearInterval(youtubeMonitor);
+    youtubeMonitor = window.setInterval(() => {
+      if (!youtubePlayer || !isHost || youtubePlayer.getPlayerState() !== window.YT.PlayerState.PLAYING) return;
+      const position = youtubePlayer.getCurrentTime();
+      const now = Date.now();
+      if (lastYoutubePosition !== null) {
+        const expected = lastYoutubePosition + (now - lastYoutubeSampleAt) / 1000;
+        if (Math.abs(position - expected) > 2) emitYouTubeControl("seek", position);
+      }
+      lastYoutubePosition = position;
+      lastYoutubeSampleAt = now;
+    }, 1000);
+  }
+
+  async function applyYouTubeState(state, videoId) {
+    const YT = await ensureYouTubeApi();
+    const iframeContainer = document.getElementById("filmtvIframeContainer");
+    if (!iframeContainer) throw new Error("FilmTV iframe container is unavailable");
+
+    const target = Number(state.position) || 0;
+    if (youtubePlayerReady) await youtubePlayerReady;
+    if (!youtubePlayer || youtubePlayerHost !== isHost) {
+      if (youtubePlayer) youtubePlayer.destroy();
+      const placeholder = document.createElement("div");
+      placeholder.id = "filmtvYouTubePlayer";
+      placeholder.style.cssText = "width:100%; height:100%;";
+      iframeContainer.replaceChildren(placeholder);
+      iframeEl = null;
+      youtubeVideoId = videoId;
+      youtubePlayerHost = isHost;
+      const ready = new Promise((resolve, reject) => {
+        const timeoutId = window.setTimeout(
+          () => reject(new Error("YouTube player did not become ready")),
+          10000
+        );
+        youtubePlayer = new YT.Player(placeholder, {
+          videoId,
+          playerVars: {
+            autoplay: 0,
+            controls: isHost ? 1 : 0,
+            disablekb: isHost ? 0 : 1,
+            enablejsapi: 1,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: () => {
+              window.clearTimeout(timeoutId);
+              resolve();
+            },
+            onError: () => {
+              window.clearTimeout(timeoutId);
+              reject(new Error("YouTube could not load this video"));
+            },
+            onStateChange: (event) => {
+              if (!isHost || applyingRemote || Date.now() < remoteControlsSuppressedUntil) return;
+              if (event.data === YT.PlayerState.PLAYING) {
+                emitYouTubeControl("play", youtubePlayer.getCurrentTime());
+              } else if (event.data === YT.PlayerState.PAUSED) {
+                emitYouTubeControl("pause", youtubePlayer.getCurrentTime());
+              }
+            },
+          },
+        });
+      });
+      youtubePlayerReady = ready;
+      try {
+        await ready;
+        youtubeApiUnavailable = false;
+      } catch (err) {
+        if (youtubePlayerReady === ready) youtubePlayerReady = null;
+        youtubeApiUnavailable = true;
+        stopYouTubePlayer();
+        throw err;
+      }
+      if (youtubePlayerReady === ready) youtubePlayerReady = null;
+      iframeEl = youtubePlayer.getIframe();
+      startYouTubeMonitor();
+    }
+
+    if (youtubeVideoId !== videoId) {
+      youtubeVideoId = videoId;
+      suppressRemoteControls();
+      if (state.playing) youtubePlayer.loadVideoById({ videoId, startSeconds: target });
+      else youtubePlayer.cueVideoById({ videoId, startSeconds: target });
+      return;
+    }
+
+    suppressRemoteControls();
+    if (Math.abs(youtubePlayer.getCurrentTime() - target) > 1.5) youtubePlayer.seekTo(target, true);
+    if (state.playing) youtubePlayer.playVideo();
+    else youtubePlayer.pauseVideo();
+  }
+
   function emitControl(action, extra = {}) {
-    if (applyingRemote || !socket || !isHost) return;
+    if (applyingRemote || Date.now() < remoteControlsSuppressedUntil || !socket || !isHost) return;
     try {
       socket.emit("filmtv_control", {
-        token: getToken(),
         action,
         position: videoEl ? videoEl.currentTime || 0 : 0,
         ...extra
@@ -59,58 +260,46 @@ const FilmTV = (() => {
     }
   }
 
-  function setupShareHandlers() {
-    const shareBtn = document.getElementById("btnFilmTVLoad") || document.getElementById("filmtvShareBtn");
-    const inputEl = document.getElementById("filmtvUrl") || document.getElementById("filmtvInput");
-    const clearBtn = document.getElementById("btnFilmTVClear");
-
-    if (shareBtn && inputEl && !shareBtn.dataset.bound) {
-      shareBtn.dataset.bound = "true";
-      shareBtn.addEventListener("click", async () => {
-        const val = inputEl.value.trim();
-        if (!val) {
-          alert("Kripya ek valid URL darj karein.");
-          return;
-        }
-
-        try {
-          const res = await fetch("/api/filmtv/source", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Session-Token": getToken() || ""
-            },
-            body: JSON.stringify({ source: val, source_type: "url", title: val })
-          });
-          const data = await res.json();
-          if (!res.ok) {
-            alert(data.error || "Source share karne mein asafalta rahi.");
-          } else {
-            inputEl.value = "";
-          }
-        } catch (err) {
-          console.error("❌ [FilmTV] Share fetch error:", err);
-        }
-      });
+  function stopYouTubePlayer() {
+    if (youtubeMonitor) window.clearInterval(youtubeMonitor);
+    youtubeMonitor = null;
+    if (youtubePlayer) {
+      try {
+        youtubePlayer.destroy();
+      } catch (err) {
+        console.warn("Unable to stop YouTube player:", err);
+      }
     }
+    youtubePlayer = null;
+    youtubePlayerReady = null;
+    youtubeVideoId = null;
+    youtubePlayerHost = null;
+    iframeEl = null;
+  }
 
-    if (clearBtn && !clearBtn.dataset.bound) {
-      clearBtn.dataset.bound = "true";
-      clearBtn.addEventListener("click", async () => {
-        try {
-          await fetch("/api/filmtv/clear", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Session-Token": getToken() || ""
-            }
-          });
-          clearPlayer();
-        } catch (err) {
-          console.error("❌ [FilmTV] Clear fetch error:", err);
-        }
-      });
+  async function getOfficePreviewUrl() {
+    const response = await fetch("/api/filmtv/view-ticket", {
+      credentials: "same-origin",
+      headers: { "X-Session-Token": getToken() || "" },
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.stream_url) {
+      throw new Error(data.error || "Unable to open document preview");
     }
+    return new URL(data.stream_url, window.location.origin).href;
+  }
+
+  function loadYouTubeFallback(state, videoId) {
+    ensureIframe();
+    if (!iframeEl) return;
+    iframeEl.removeAttribute("sandbox");
+    iframeEl.referrerPolicy = "strict-origin-when-cross-origin";
+    const fallbackUrl = new URL(`https://www.youtube.com/embed/${encodeURIComponent(videoId)}`);
+    fallbackUrl.searchParams.set("autoplay", state.playing ? "1" : "0");
+    fallbackUrl.searchParams.set("controls", "1");
+    fallbackUrl.searchParams.set("start", String(Math.floor(Number(state.position) || 0)));
+    iframeEl.src = fallbackUrl.href;
+    updateStatusBadge("♡ watching (sync unavailable)");
   }
 
   async function loadState(state, memberId) {
@@ -118,6 +307,7 @@ const FilmTV = (() => {
       clearPlayer();
       return;
     }
+    const loadVersion = ++stateLoadVersion;
 
     isHost = state.host_id === memberId;
     const titleEl = document.getElementById("filmtvTitle");
@@ -129,106 +319,130 @@ const FilmTV = (() => {
     const iframeContainer = document.getElementById("filmtvIframeContainer");
 
     const sourceStr = (state.source || "").toLowerCase();
-    const streamUrlStr = (state.stream_url || "").toLowerCase();
+    const rawUrl = (state.source || state.stream_url || "").trim();
+    const videoExtension = /\.(mp4|webm|ogg|mov|mkv|m4v)$/i;
+    const isVideoUpload = state.source_type === "upload" && videoExtension.test(sourceStr);
+    const isPdfUpload = state.source_type === "upload" && /\.pdf$/i.test(sourceStr);
+    const isDirectVideo = state.source_type !== "upload" && (() => {
+      try {
+        return videoExtension.test(new URL(rawUrl).pathname);
+      } catch {
+        return false;
+      }
+    })();
 
-    // Sirf asli video files ke liye video element use hoga
-    const isVideoUpload = (
-      state.source_type === "upload" && (
-        sourceStr.endsWith(".mp4") || sourceStr.endsWith(".webm") ||
-        sourceStr.endsWith(".ogg") || sourceStr.endsWith(".mov") ||
-        sourceStr.endsWith(".mkv") || sourceStr.endsWith(".m4v")
-      )
-    );
-
-    if (isVideoUpload && videoEl) {
+    if ((isVideoUpload || isDirectVideo) && videoEl) {
+      pdfViewer()?.close();
+      suppressRemoteControls();
+      if (youtubePlayer) stopYouTubePlayer();
+      ensureIframe();
       if (iframeContainer) iframeContainer.style.display = "none";
 
       videoEl.style.display = "block";
-      const tokenVal = getToken();
-      const tokenStr = tokenVal ? `?token=${encodeURIComponent(tokenVal)}` : "";
-      const src = (state.stream_url || "/api/filmtv/stream") + tokenStr;
-
-      if (!videoEl.src.includes("stream")) {
+      const src = new URL(
+        isVideoUpload ? (state.stream_url || "/api/filmtv/stream") : rawUrl,
+        window.location.origin
+      ).href;
+      if (currentVideoSource !== state.source || videoEl.src !== src) {
+        currentVideoSource = state.source;
         videoEl.src = src;
         videoEl.load();
       }
-
-      applyingRemote = true;
-      if (Math.abs(videoEl.currentTime - (state.position || 0)) > 1.5) {
-        videoEl.currentTime = state.position || 0;
-      }
-
-      if (state.playing) {
-        videoEl.play().catch((err) => console.log("Playback info:", err));
-      } else {
-        videoEl.pause();
-      }
-      applyingRemote = false;
-
+      latestVideoState = state;
+      if (videoEl.readyState >= 1) applyLatestVideoState();
       videoEl.controls = isHost;
-    } else {
-      // PDFs, documents, aur YouTube ke liye iframe container display hoga
+      updateStatusBadge(isHost ? "♡ hosting (synced)" : "♡ watching (synced)");
+      return;
+    }
+
+    if (isPdfUpload && pdfViewer()) {
+      openStage();
       if (videoEl) {
         videoEl.pause();
         videoEl.style.display = "none";
+        currentVideoSource = null;
+        latestVideoState = null;
       }
-
-      if (iframeContainer) {
-        iframeContainer.style.display = "block";
+      if (iframeContainer) iframeContainer.style.display = "none";
+      try {
+        await pdfViewer().open(state);
+      } catch (error) {
+        updateStatusBadge("♡ PDF unavailable");
+        throw error;
       }
+      updateStatusBadge(isHost ? "♡ reading together" : "♡ reading together");
+      return;
+    }
 
-      if (iframeEl) {
-        iframeEl.style.display = "block";
-        let displaySource = "";
+    pdfViewer()?.close();
+    if (videoEl) {
+      suppressRemoteControls();
+      videoEl.pause();
+      videoEl.style.display = "none";
+      currentVideoSource = null;
+      latestVideoState = null;
+    }
+    if (iframeContainer) iframeContainer.style.display = "block";
 
-        const rawUrl = (state.source || state.stream_url || "").trim();
-
-        if (state.source_type === "upload") {
-          const tokenVal = getToken();
-          const tokenStr = tokenVal ? `?token=${encodeURIComponent(tokenVal)}` : "";
-          const streamUrl = window.location.origin + state.stream_url + tokenStr;
-
-          if (sourceStr.endsWith(".pdf") || sourceStr.includes(".pdf")) {
-            displaySource = streamUrl;
-          } else if (/\.(doc|docx|xls|xlsx|ppt|pptx)(\?.*)?$/i.test(state.source || "")) {
-            displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(streamUrl)}`;
-          } else {
-            displaySource = streamUrl;
+    if (state.source_type !== "upload") {
+      const videoId = youtubeIdFromUrl(rawUrl);
+      if (videoId) {
+        if (iframeEl) iframeEl.style.display = "block";
+        if (youtubeApiUnavailable) {
+          loadYouTubeFallback(state, videoId);
+          return;
+        }
+        updateStatusBadge(isHost ? "♡ hosting (syncing)" : "♡ watching (syncing)");
+        applyYouTubeState(state, videoId).then(() => {
+          if (loadVersion === stateLoadVersion && !youtubeApiUnavailable) {
+            updateStatusBadge(isHost ? "♡ hosting (synced)" : "♡ watching (synced)");
           }
+        }).catch((err) => {
+          if (loadVersion !== stateLoadVersion) return;
+          console.warn("YouTube sync unavailable; using iframe playback:", err);
+          youtubeApiUnavailable = true;
+          loadYouTubeFallback(state, videoId);
+        });
+        return;
+      }
+    }
+
+    if (youtubePlayer) stopYouTubePlayer();
+    ensureIframe();
+    if (iframeEl) {
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-same-origin allow-modals");
+      iframeEl.style.display = "block";
+      let displaySource = rawUrl;
+
+      if (state.source_type === "upload") {
+        const extension = sourceStr.split("?")[0].split("#")[0].split(".").pop();
+        const streamUrl = new URL(state.stream_url || "/api/filmtv/stream", window.location.origin).href;
+        if (extension === "pdf") {
+          displaySource = streamUrl;
+        } else if (["doc", "docx", "xls", "xlsx", "ppt", "pptx"].includes(extension)) {
+          const publicStreamUrl = await getOfficePreviewUrl();
+          displaySource = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(publicStreamUrl)}`;
         } else {
-          if (rawUrl.includes("youtube.com/watch?v=")) {
-            try {
-              const urlObj = new URL(rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`);
-              const videoId = urlObj.searchParams.get("v");
-              if (videoId) {
-                displaySource = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
-              }
-            } catch (e) {
-              displaySource = rawUrl.replace("watch?v=", "embed/");
-            }
-          } else if (rawUrl.includes("youtu.be/")) {
-            const parts = rawUrl.split("youtu.be/");
-            if (parts[1]) {
-              const videoId = parts[1].split("?")[0];
-              displaySource = `https://www.youtube.com/embed/${videoId}?autoplay=1&enablejsapi=1`;
-            }
-          } else if (rawUrl.includes("youtube.com/embed/")) {
-            displaySource = rawUrl;
-          } else {
-            displaySource = rawUrl;
-          }
-        }
-
-        if (iframeEl.src !== displaySource) {
-          iframeEl.src = displaySource;
+          displaySource = streamUrl;
         }
       }
+
+      const absoluteSource = new URL(displaySource, window.location.origin).href;
+      if (iframeEl.src !== absoluteSource) iframeEl.src = absoluteSource;
     }
 
     updateStatusBadge(isHost ? "♡ hosting (synced)" : "♡ watching (synced)");
   }
 
   function clearPlayer() {
+    stateLoadVersion += 1;
+    isHost = false;
+    pdfViewer()?.close();
+    latestVideoState = null;
+    currentVideoSource = null;
+    suppressRemoteControls();
+    if (youtubePlayer) stopYouTubePlayer();
+    ensureIframe();
     if (iframeEl) iframeEl.removeAttribute("src");
     if (videoEl) {
       videoEl.pause();

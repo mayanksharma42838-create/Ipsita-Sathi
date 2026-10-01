@@ -672,6 +672,167 @@ body.filmtv-open #messages {
   display: block;
 }
 
+.filmtv-document-viewer {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #202225;
+}
+
+#filmtvDocumentViewer[hidden] {
+  display: none;
+}
+
+.filmtv-document-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  background: var(--glass-strong);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.filmtv-document-tools,
+.filmtv-document-pages {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filmtv-document-toolbar label,
+.filmtv-document-pages span {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--ink);
+}
+
+.filmtv-document-toolbar select {
+  width: auto;
+  min-width: 92px;
+  padding: 6px 8px;
+}
+
+.filmtv-document-toolbar button[aria-pressed="true"] {
+  border-color: var(--accent-warm);
+  background: rgba(255, 190, 92, 0.22);
+}
+
+.filmtv-pdf-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  overscroll-behavior: contain;
+}
+
+.filmtv-pdf-page {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto;
+  background: white;
+  box-shadow: 0 5px 24px rgba(0, 0, 0, 0.36);
+}
+
+#filmtvPdfCanvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.filmtv-annotation-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.filmtv-annotation-layer.annotating {
+  pointer-events: auto;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.filmtv-document-mark {
+  position: absolute;
+  pointer-events: none;
+}
+
+.filmtv-document-mark.highlight {
+  opacity: 0.42;
+  border-radius: 2px;
+  mix-blend-mode: multiply;
+}
+
+.filmtv-document-mark.underline {
+  border-bottom: 3px solid currentColor;
+}
+
+.filmtv-document-mark.preview {
+  outline: 1px dashed currentColor;
+}
+
+.filmtv-pdf-status {
+  margin: 10px auto 0;
+  color: var(--ink);
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .filmtv-document-toolbar {
+    align-items: center;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 5px 8px;
+  }
+
+  .filmtv-document-tools,
+  .filmtv-document-pages {
+    width: 100%;
+  }
+
+  .filmtv-document-tools {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: thin;
+  }
+
+  .filmtv-document-tools button,
+  .filmtv-document-pages button {
+    min-height: 36px;
+  }
+
+  .filmtv-document-tools button,
+  .filmtv-document-tools label,
+  .filmtv-document-tools select {
+    flex: 0 0 auto;
+  }
+
+  .filmtv-document-tools button {
+    padding: 6px 8px;
+    font-size: 0.72rem;
+  }
+
+  .filmtv-document-tools label {
+    font-size: 0.72rem;
+  }
+
+  .filmtv-document-pages {
+    justify-content: center;
+  }
+
+  .filmtv-pdf-viewport {
+    padding: 8px;
+  }
+}
+
 
 .filmtv-empty {
   position: absolute;
@@ -744,6 +905,33 @@ body.filmtv-open #messages {
 #filmtvError {
   margin-top: 0;
   min-height: 0;
+}
+
+body.pdf-document-open .filmtv-dock-row:first-child,
+body.pdf-document-open .filmtv-dock-actions .file-btn,
+body.pdf-document-open .filmtv-dock-actions #filmtvTitleInput {
+  display: none;
+}
+
+body.pdf-document-open .filmtv-dock-actions {
+  justify-content: flex-end;
+}
+
+body.pdf-document-open .topbar,
+body.pdf-document-open .filmtv-header>div:first-child,
+body.pdf-document-open .filmtv-sync {
+  display: none;
+}
+
+body.pdf-document-open .filmtv-header {
+  align-items: center;
+  min-height: 0;
+  padding: 2px 6px;
+}
+
+body.pdf-document-open .filmtv-header-actions {
+  width: 100%;
+  justify-content: flex-end;
 }
 
 /* Theater: video-forward, chat overlays */
@@ -913,6 +1101,30 @@ body.theater-mode #messages {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(200px, 42vh) minmax(240px, 1fr);
     gap: 10px;
+  }
+
+  body.filmtv-open.pdf-document-open #roomSplit {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  body.filmtv-open.pdf-document-open #filmtvStage {
+    grid-row: 1;
+    width: 100%;
+    max-width: none;
+    min-height: 0;
+    height: 100%;
+    resize: none;
+    overflow: hidden;
+  }
+
+  body.filmtv-open.pdf-document-open #appMain {
+    display: none;
+  }
+
+  body.filmtv-open.pdf-document-open .filmtv-player-wrap {
+    min-height: 0;
   }
 
   body.filmtv-open #filmtvStage {

@@ -8,7 +8,7 @@ from app.extensions import db
 from app.models import Member, Room, utcnow
 
 
-def get_member_from_request() -> Member | None:
+def get_member_from_request(*, allow_query_token: bool = False) -> Member | None:
     """Authenticate via header or Flask session cookie — never query-string tokens."""
     try:
         token = (
@@ -18,7 +18,7 @@ def get_member_from_request() -> Member | None:
         )
         
         # Allow query string token specifically for external viewer fetches (Office Viewer, Video streams)
-        if not token and request.args.get("token"):
+        if allow_query_token and not token and request.args.get("token"):
             token = request.args.get("token")
 
         if not token:

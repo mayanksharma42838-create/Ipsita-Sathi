@@ -1,4 +1,4 @@
-/* global CryptoClient, OfflineStore, PrivacyGuard, DoodleBoard, FilmTV, io */
+/* global CryptoClient, OfflineStore, PrivacyGuard, DoodleBoard, FilmTV, PdfDocumentViewer, io */
 
 const App = (() => {
   const THEMES = {
@@ -269,42 +269,20 @@ const App = (() => {
       return;
     }
 
-    // Dual-endpoint fallback for robust backend compatibility (/api/filmtv/source and /api/filmtv/load)
-    let success = false;
-    let lastError = "Failed to share source";
-
+    const shareButton = $("#btnFilmTVLoad");
+    if (shareButton) shareButton.disabled = true;
     try {
       const data = await api("/api/filmtv/source", {
         method: "POST",
         body: JSON.stringify({ source: url, source_type: "url", title: title || undefined }),
       });
-      if (data && data.state) {
-        await FilmTV.loadState(data.state, state.memberId);
-        if (urlInput) urlInput.value = "";
-        success = true;
-      }
-    } catch (e1) {
-      lastError = e1.message;
-    }
-
-    if (!success) {
-      try {
-        const data2 = await api("/api/filmtv/load", {
-          method: "POST",
-          body: JSON.stringify({ url, source: url, source_type: "url", title: title || undefined }),
-        });
-        if (data2 && data2.state) {
-          await FilmTV.loadState(data2.state, state.memberId);
-          if (urlInput) urlInput.value = "";
-          success = true;
-        }
-      } catch (e2) {
-        lastError = e2.message;
-      }
-    }
-
-    if (!success) {
-      setFilmTVError(lastError);
+      if (!data?.state) throw new Error("Server did not return FilmTV state");
+      await FilmTV.loadState(data.state, state.memberId);
+      if (urlInput) urlInput.value = "";
+    } catch (e) {
+      setFilmTVError(e.message);
+    } finally {
+      if (shareButton) shareButton.disabled = false;
     }
   }
 
@@ -399,11 +377,22 @@ const App = (() => {
 
     // Fixed socket listeners passing correct state.memberId to prevent host/watcher mismatch
     state.socket.on("filmtv_control", (payload) => {
-      if (payload && payload.state) FilmTV.loadState(payload.state, state.memberId);
-      else FilmTV.applyRemoteControl(payload);
+      if (payload && payload.state) {
+        FilmTV.loadState(payload.state, state.memberId).catch((e) => setFilmTVError(e.message));
+      } else {
+        FilmTV.applyRemoteControl(payload).catch((e) => setFilmTVError(e.message));
+      }
     });
     state.socket.on("filmtv_state", (payload) => {
-      if (payload && payload.state) FilmTV.loadState(payload.state, state.memberId);
+      if (payload && payload.state) {
+        FilmTV.loadState(payload.state, state.memberId).catch((e) => setFilmTVError(e.message));
+      }
+    });
+    state.socket.on("filmtv_annotation_added", (annotation) => {
+      PdfDocumentViewer.receiveAnnotation(annotation);
+    });
+    state.socket.on("filmtv_annotations_cleared", (payload) => {
+      PdfDocumentViewer.clearRemoteAnnotations(payload);
     });
 
     state.socket.on("connect", () => {

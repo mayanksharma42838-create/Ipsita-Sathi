@@ -102,3 +102,24 @@ class Message(db.Model):
 
     room = db.relationship("Room", back_populates="messages")
     sender = db.relationship("Member")
+
+
+class FilmTVAnnotation(db.Model):
+    __tablename__ = "filmtv_annotations"
+
+    id = db.Column(db.Integer, primary_key=True)
+    room_pk = db.Column(db.Integer, db.ForeignKey("rooms.id"), nullable=False, index=True)
+    document_key = db.Column(db.String(64), nullable=False, index=True)
+    page_number = db.Column(db.Integer, nullable=False)
+    kind = db.Column(db.String(16), nullable=False)
+    x = db.Column(db.Float, nullable=False)
+    y = db.Column(db.Float, nullable=False)
+    width = db.Column(db.Float, nullable=False)
+    height = db.Column(db.Float, nullable=False)
+    color = db.Column(db.String(16), nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey("members.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+
+    __table_args__ = (
+        db.Index("ix_filmtv_annotation_document_page", "room_pk", "document_key", "page_number"),
+    )

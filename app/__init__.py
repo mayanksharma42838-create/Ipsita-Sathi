@@ -50,6 +50,10 @@ def create_app(config_class=Config):
     app.register_blueprint(auth_bp)
     app.register_blueprint(api_bp)
 
+    @app.errorhandler(413)
+    def request_too_large(_error):
+        return jsonify({"error": "Request exceeds the configured upload limit."}), 413
+
     from app import sockets as _socket_handlers  # noqa: F401
 
     @app.route("/")
@@ -77,13 +81,14 @@ def create_app(config_class=Config):
         
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' https://cdn.socket.io https://cdnjs.cloudflare.com; "
+            "script-src 'self' https://cdn.socket.io https://cdnjs.cloudflare.com https://www.youtube.com https://s.ytimg.com; "
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "font-src 'self' https://fonts.gstatic.com data:; "
+            "worker-src 'self' blob: https://cdnjs.cloudflare.com; "
             "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com https://picsum.photos https://*.picsum.photos; "
             "media-src 'self' blob: https:; "
             "connect-src 'self' ws: wss: https://cdn.socket.io https://cdnjs.cloudflare.com; "
-            "frame-src 'self' blob: https://www.instagram.com https://www.youtube.com https://*.youtube.com https://youtube.com https://youtu.be https://*.google.com https://docs.google.com https://view.officeapps.live.com; "
+            "frame-src 'self' blob: https: https://view.officeapps.live.com; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "
@@ -181,8 +186,6 @@ def _start_expiry_sweeper(app: Flask) -> None:
                         Message.expires_at.isnot(None),
                         Message.expires_at <= now,
                     ).all()
-                    if not expired:
-                        continue
                     by_room: dict[str, list[int]] = {}
                     for msg in expired:
                         socketio.sleep(0.01)
@@ -196,9 +199,11 @@ def _start_expiry_sweeper(app: Flask) -> None:
                         rid = msg.room.room_id if msg.room else None
                         if rid:
                             by_room.setdefault(rid, []).append(msg.id)
-                    db.session.commit()
+                    if expired:
+                        db.session.commit()
                     for rid, ids in by_room.items():
                         socketio.emit("messages_expired", {"ids": ids}, room=f"room:{rid}")
+
                 except Exception:
                     db.session.rollback()
 

@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import os
 import uuid
+import zipfile
+import hashlib
+import math
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, quote, urlsplit
 
-from flask import Blueprint, current_app, g, jsonify, request, send_file
+from flask import Blueprint, current_app, g, jsonify, request, send_file, url_for
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 from werkzeug.utils import secure_filename
 
 from app.auth_helpers import login_required, get_member_from_request
 from app.extensions import db, socketio
-from app.models import Member, Message, utcnow
+from app.models import FilmTVAnnotation, Member, Message, Room, utcnow
 from app.security import (
     rate_or_429,
     read_upload_header,
@@ -77,6 +82,94 @@ def _ttl_from(value) -> tuple[object | None, str | None]:
     if ttl > 7 * 24 * 3600:
         return None, "ttl_seconds too large"
     return utcnow() + timedelta(seconds=ttl), None
+
+
+def _filmtv_upload_path(source: str | None) -> Path | None:
+    if not source:
+        return None
+    uploads = Path(current_app.config["FILMTV_DIR"]).resolve()
+    path = Path(source).resolve()
+    try:
+        path.relative_to(uploads)
+    except ValueError:
+        return None
+    return path
+
+
+def _active_pdf_document_key(room) -> str | None:
+    if room.filmtv_source_type != "upload":
+        return None
+    path = _filmtv_upload_path(room.filmtv_source)
+    if not path or not path.is_file() or path.suffix.lower() != ".pdf":
+        return None
+    return hashlib.sha256(f"{room.id}:{path.name}".encode("utf-8")).hexdigest()
+
+
+def _annotation_payload(annotation: FilmTVAnnotation) -> dict:
+    return {
+        "id": annotation.id,
+        "document_key": annotation.document_key,
+        "page_number": annotation.page_number,
+        "kind": annotation.kind,
+        "x": annotation.x,
+        "y": annotation.y,
+        "width": annotation.width,
+        "height": annotation.height,
+        "color": annotation.color,
+        "created_by": annotation.created_by,
+        "created_at": annotation.created_at.isoformat(),
+    }
+
+
+def _remove_filmtv_upload(source: str | None) -> None:
+    path = _filmtv_upload_path(source)
+    if path:
+        try:
+            path.unlink(missing_ok=True)
+        except PermissionError:
+            return
+        except OSError:
+            logger.warning("Failed to remove old FilmTV upload: %s", path)
+
+
+def _valid_filmtv_upload(ext: str, header: bytes, file_storage) -> bool:
+    if ext in current_app.config["ALLOWED_VIDEO_EXT"]:
+        if not sniff_video_ok(header):
+            return False
+        if ext in {".mp4", ".mov", ".m4v"}:
+            return len(header) >= 8 and header[4:8] == b"ftyp"
+        if ext in {".webm", ".mkv"}:
+            return header.startswith(b"\x1a\x45\xdf\xa3")
+        return header.startswith(b"OggS")
+    if ext == ".pdf":
+        return header.startswith(b"%PDF-")
+    if ext in {".doc", ".xls", ".ppt"}:
+        return header.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+    if ext in {".docx", ".xlsx", ".pptx"}:
+        expected = {
+            ".docx": "word/document.xml",
+            ".xlsx": "xl/workbook.xml",
+            ".pptx": "ppt/presentation.xml",
+        }[ext]
+        try:
+            file_storage.stream.seek(0)
+            with zipfile.ZipFile(file_storage.stream) as archive:
+                names = set(archive.namelist())
+                return "[Content_Types].xml" in names and expected in names
+        except (OSError, zipfile.BadZipFile):
+            return False
+        finally:
+            file_storage.stream.seek(0)
+    if ext == ".txt":
+        return b"\x00" not in header
+    return False
+
+
+def _upload_request_too_large(max_file_bytes: int):
+    request_limit = max_file_bytes + 1024 * 1024
+    if request.content_length is not None and request.content_length > request_limit:
+        return jsonify({"error": "Request exceeds the upload limit."}), 413
+    return None
 
 
 @bp.get("/messages")
@@ -174,6 +267,9 @@ def upload_media():
     limited = rate_or_429("media_upload", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
+    too_large = _upload_request_too_large(current_app.config["CHAT_MEDIA_MAX_BYTES"])
+    if too_large:
+        return too_large
 
     if "file" not in request.files:
         return jsonify({"error": "file required"}), 400
@@ -352,6 +448,9 @@ def upload_theme():
     limited = rate_or_429("theme_upload", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
+    too_large = _upload_request_too_large(current_app.config["THEME_MAX_BYTES"])
+    if too_large:
+        return too_large
 
     f = request.files.get("file")
     if not f:
@@ -495,6 +594,9 @@ def save_doodle():
     limited = rate_or_429("doodle", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
+    too_large = _upload_request_too_large(current_app.config["DOODLE_MAX_BYTES"])
+    if too_large:
+        return too_large
 
     if "file" not in request.files:
         return jsonify({"error": "file required"}), 400
@@ -566,30 +668,43 @@ def filmtv_load():
     if limited:
         return limited
 
-    data = request.get_json(silent=True) or {}
-    url = (data.get("source") or data.get("url") or "").strip()[:2048]
-    title = (data.get("title") or "").strip()[:256] or "Shared Workspace"
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+    raw_url = data.get("source") or data.get("url") or ""
+    raw_title = data.get("title") or ""
+    if not isinstance(raw_url, str) or not isinstance(raw_title, str):
+        return jsonify({"error": "source and title must be strings"}), 400
+    url = raw_url.strip()
+    title = raw_title.strip()[:256] or "Shared Workspace"
 
     if not url:
         return jsonify({"error": "url required"}), 400
 
-    if not url.startswith("https://"):
+    if len(url) > 2048:
+        return jsonify({"error": "URL is too long"}), 400
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        return jsonify({"error": "Invalid URL"}), 400
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
         return jsonify({"error": "Only HTTPS URLs are allowed for security"}), 400
 
-    # Auto convert standard YouTube links to embed format
-    if "youtube.com/watch?v=" in url:
-        try:
-            video_id = url.split("watch?v=")[1].split("&")[0]
-            url = f"https://www.youtube.com/embed/{video_id}"
-        except Exception:
-            pass
-    elif "youtu.be/" in url:
-        try:
-            video_id = url.split("youtu.be/")[1].split("?")[0]
-            url = f"https://www.youtube.com/embed/{video_id}"
-        except Exception:
-            pass
+    host = parsed.hostname.lower().rstrip(".")
+    video_id = None
+    if host in {"youtube.com", "www.youtube.com", "m.youtube.com"} and parsed.path == "/watch":
+        video_id = parse_qs(parsed.query).get("v", [None])[0]
+    elif host == "youtu.be":
+        video_id = parsed.path.strip("/").split("/", 1)[0]
+    if video_id:
+        url = f"https://www.youtube.com/embed/{quote(video_id, safe='')}"
 
+    old_source = g.room.filmtv_source if g.room.filmtv_source_type == "upload" else None
     g.room.filmtv_source_type = "url"
     g.room.filmtv_source = url
     g.room.filmtv_title = title
@@ -598,6 +713,7 @@ def filmtv_load():
     g.room.filmtv_host_id = g.member.id
     g.room.filmtv_updated_at = utcnow()
     db.session.commit()
+    _remove_filmtv_upload(old_source)
 
     state = g.room.filmtv_state()
     socketio.emit(
@@ -615,6 +731,9 @@ def filmtv_upload():
     limited = rate_or_429("filmtv_upload", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
+    too_large = _upload_request_too_large(current_app.config["FILMTV_MAX_BYTES"])
+    if too_large:
+        return too_large
 
     try:
         if "file" not in request.files:
@@ -639,13 +758,10 @@ def filmtv_upload():
         if size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
             return jsonify({"error": "file too large or empty"}), 400
 
-        if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
-            try:
-                old_path = Path(g.room.filmtv_source)
-                if old_path.exists():
-                    old_path.unlink(missing_ok=True)
-            except Exception as e:
-                logger.warning(f"Failed to delete old filmtv file: {e}")
+        if not _valid_filmtv_upload(ext, header, f):
+            return jsonify({"error": "file content does not match its extension"}), 400
+
+        old_source = g.room.filmtv_source if g.room.filmtv_source_type == "upload" else None
 
         filename = f"filmtv_{g.room.room_id}_{uuid.uuid4().hex}{ext}"
         dest = Path(current_app.config["FILMTV_DIR"]) / filename
@@ -660,7 +776,14 @@ def filmtv_upload():
         g.room.filmtv_host_id = g.member.id
         g.room.filmtv_updated_at = utcnow()
         
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            dest.unlink(missing_ok=True)
+            raise
+
+        _remove_filmtv_upload(old_source)
 
         state = g.room.filmtv_state()
         socketio.emit(
@@ -676,33 +799,145 @@ def filmtv_upload():
         return jsonify({"error": "Internal server error during upload"}), 500
 
 
+@bp.get("/filmtv/view-ticket")
+@login_required
+def filmtv_view_ticket():
+    if g.room.filmtv_source_type != "upload" or not _filmtv_upload_path(g.room.filmtv_source):
+        return jsonify({"error": "no uploaded document"}), 404
+    serializer = URLSafeTimedSerializer(current_app.secret_key, salt="filmtv-stream")
+    ticket = serializer.dumps(
+        {"room_id": g.room.id, "filename": Path(g.room.filmtv_source).name}
+    )
+    return jsonify({"stream_url": url_for("api.filmtv_stream", ticket=ticket)})
+
+
+@bp.get("/filmtv/annotations")
+@login_required
+def filmtv_get_annotations():
+    document_key = _active_pdf_document_key(g.room)
+    if not document_key:
+        return jsonify({"error": "An uploaded PDF must be active"}), 404
+    rows = (
+        FilmTVAnnotation.query.filter_by(room_pk=g.room.id, document_key=document_key)
+        .order_by(FilmTVAnnotation.page_number, FilmTVAnnotation.created_at)
+        .limit(10000)
+        .all()
+    )
+    return jsonify({"document_key": document_key, "annotations": [_annotation_payload(row) for row in rows]})
+
+
+@bp.post("/filmtv/annotations")
+@login_required
+def filmtv_add_annotation():
+    limited = rate_or_429("filmtv_annotation", *current_app.config["RL_SOCKET"])
+    if limited:
+        return limited
+    document_key = _active_pdf_document_key(g.room)
+    if not document_key:
+        return jsonify({"error": "An uploaded PDF must be active"}), 404
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+    kind = data.get("kind")
+    color = data.get("color", "yellow")
+    if not isinstance(kind, str) or kind not in {"highlight", "underline"}:
+        return jsonify({"error": "kind must be highlight or underline"}), 400
+    colors = {"yellow", "green", "blue", "pink"}
+    if not isinstance(color, str) or color not in colors:
+        return jsonify({"error": "unsupported annotation color"}), 400
+    try:
+        page_number = data.get("page_number")
+        if type(page_number) is not int:
+            raise ValueError
+        coords = {key: float(data.get(key)) for key in ("x", "y", "width", "height")}
+    except (TypeError, ValueError):
+        return jsonify({"error": "page and annotation coordinates must be numbers"}), 400
+    if page_number < 1 or page_number > 100000:
+        return jsonify({"error": "page_number is out of range"}), 400
+    if any(not math.isfinite(value) for value in coords.values()):
+        return jsonify({"error": "annotation coordinates must be finite"}), 400
+    x, y, width, height = (coords[key] for key in ("x", "y", "width", "height"))
+    if (
+        x < 0 or y < 0 or width <= 0 or height <= 0
+        or x + width > 1 or y + height > 1
+    ):
+        return jsonify({"error": "annotation must fit within the page"}), 400
+
+    annotation = FilmTVAnnotation(
+        room_pk=g.room.id,
+        document_key=document_key,
+        page_number=page_number,
+        kind=kind,
+        x=x,
+        y=y,
+        width=width,
+        height=height,
+        color=color,
+        created_by=g.member.id,
+    )
+    db.session.add(annotation)
+    db.session.commit()
+    payload = _annotation_payload(annotation)
+    socketio.emit(
+        "filmtv_annotation_added",
+        payload,
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "annotation": payload}), 201
+
+
+@bp.delete("/filmtv/annotations")
+@login_required
+def filmtv_clear_annotations():
+    document_key = _active_pdf_document_key(g.room)
+    if not document_key:
+        return jsonify({"error": "An uploaded PDF must be active"}), 404
+    FilmTVAnnotation.query.filter_by(room_pk=g.room.id, document_key=document_key).delete(
+        synchronize_session=False
+    )
+    db.session.commit()
+    socketio.emit(
+        "filmtv_annotations_cleared",
+        {"document_key": document_key},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "document_key": document_key})
+
+
 @bp.get("/filmtv/stream")
 def filmtv_stream():
-    """Stream uploaded media with support for byte-range requests and query token auth."""
-    token = request.args.get("token")
-    member = None
-    if token:
-        member = Member.query.filter_by(session_token=token).first()
-    if not member:
-        member = get_member_from_request()
-    if not member:
-        return jsonify({"error": "Unauthorized stream request"}), 401
+    """Stream an upload with byte ranges; external viewers use short-lived scoped tickets."""
+    ticket = request.args.get("ticket")
+    room = None
+    if ticket:
+        serializer = URLSafeTimedSerializer(current_app.secret_key, salt="filmtv-stream")
+        try:
+            payload = serializer.loads(ticket, max_age=3600)
+        except BadSignature:
+            return jsonify({"error": "Invalid or expired stream ticket"}), 401
+        room = Room.query.get(payload.get("room_id"))
+        if (
+            not room
+            or room.filmtv_source_type != "upload"
+            or not room.filmtv_source
+            or Path(room.filmtv_source).name != payload.get("filename")
+        ):
+            return jsonify({"error": "Stream is no longer available"}), 404
+    else:
+        member = get_member_from_request(allow_query_token=False)
+        if not member:
+            return jsonify({"error": "Unauthorized stream request"}), 401
+        room = member.room
 
     try:
-        room = member.room
         if room.filmtv_source_type != "upload" or not room.filmtv_source:
             return jsonify({"error": "no uploaded video/document"}), 404
-            
-        file_path = Path(room.filmtv_source)
+        file_path = _filmtv_upload_path(room.filmtv_source)
+        if not file_path:
+            return jsonify({"error": "Unauthorized path"}), 403
         if not file_path.is_file():
             logger.error(f"FilmTV file missing on disk: {file_path}")
             return jsonify({"error": "File not found"}), 404
-            
-        filmtv_dir = Path(current_app.config["FILMTV_DIR"]).resolve()
-        try:
-            file_path.resolve().relative_to(filmtv_dir)
-        except ValueError:
-            return jsonify({"error": "Unauthorized path"}), 403
             
         return send_file(str(file_path), conditional=True)
     except Exception as e:
@@ -717,18 +952,16 @@ def filmtv_clear():
     if limited:
         return limited
 
-    if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
-        try:
-            Path(g.room.filmtv_source).unlink(missing_ok=True)
-        except OSError:
-            pass
+    old_source = g.room.filmtv_source if g.room.filmtv_source_type == "upload" else None
     g.room.filmtv_source_type = None
     g.room.filmtv_source = None
     g.room.filmtv_title = None
     g.room.filmtv_playing = False
     g.room.filmtv_position = 0.0
+    g.room.filmtv_host_id = None
     g.room.filmtv_updated_at = utcnow()
     db.session.commit()
+    _remove_filmtv_upload(old_source)
     state = g.room.filmtv_state()
     socketio.emit(
         "filmtv_state",

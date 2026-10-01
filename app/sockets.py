@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import math
 
 import eventlet
 from flask import current_app, request
@@ -74,6 +75,16 @@ def on_connect(auth=None):
     room_name = f"room:{member.room.room_id}"
     join_room(room_name)
     emit("connected", {"member_id": member.id, "room_id": member.room.room_id})
+    peers = Member.query.filter_by(room_pk=member.room_pk).all()
+    for peer in peers:
+        if peer.id != member.id:
+            emit("presence", {"display_name": peer.display_name, "online": peer.is_online})
+    socketio.emit(
+        "presence",
+        {"display_name": member.display_name, "online": True},
+        room=room_name,
+        include_self=False,
+    )
 
 
 @socketio.on("disconnect")
@@ -92,6 +103,11 @@ def on_disconnect():
         member.is_online = False
         member.last_seen = utcnow()
         db.session.commit()
+        socketio.emit(
+            "presence",
+            {"display_name": member.display_name, "online": False},
+            room=f"room:{member.room.room_id}",
+        )
     except Exception:
         db.session.rollback()
 
@@ -99,20 +115,28 @@ def on_disconnect():
 @socketio.on("filmtv_control")
 def on_filmtv_control(data):
     member = _member_from_sid()
-    if not member:
+    if not member or not isinstance(data, dict):
         return
     room = member.room
-    action = (data or {}).get("action")
+    action = data.get("action")
     position = data.get("position")
 
-    if room.filmtv_host_id and room.filmtv_host_id != member.id:
+    if (
+        not room.filmtv_source
+        or room.filmtv_host_id != member.id
+        or action not in {"play", "pause", "seek", "heartbeat"}
+        or not rate_limit(f"filmtv_control:{member.id}", *current_app.config["RL_SOCKET"])
+    ):
         return
 
-    try:
-        if position is not None:
-            room.filmtv_position = max(0.0, float(position))
-    except (TypeError, ValueError):
-        pass
+    if position is not None:
+        try:
+            parsed_position = float(position)
+        except (TypeError, ValueError):
+            return
+        if not math.isfinite(parsed_position):
+            return
+        room.filmtv_position = max(0.0, parsed_position)
 
     if action == "play":
         room.filmtv_playing = True

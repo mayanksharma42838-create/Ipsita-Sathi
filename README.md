@@ -14,6 +14,13 @@ Secure **2-person private room** — Shared Room ID + Secret Password. No public
 8. **E2E encryption** — AES-GCM on the client (room ID + password); offline outbox sync  
 9. **Capacitor** — Android/iOS packaging via `package.json` scripts  
 
+## FilmTV uploads
+
+- FilmTV uploads allow files up to 2 GiB by default (`FILMTV_MAX_BYTES`). Set `MAX_CONTENT_LENGTH` above that value to account for multipart overhead.
+- Uploaded PDFs open in the shared page viewer. Room members can add persistent, color-coded highlights and underlines; page navigation and annotation changes sync live.
+- Reverse proxies and hosting platforms must also allow the configured request size. The app streams uploads to local storage; production deployments need enough disk space and durable storage.
+- Video playback depends on browser codec support. FilmTV validates common container signatures but does not transcode unsupported codecs.
+
 ## Quick start
 
 ```bash
