@@ -637,9 +637,6 @@ def filmtv_upload():
         size = f.tell()
         f.seek(0)
         if size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
-<<<<<<< HEAD
-       
-=======
             return jsonify({"error": "file too large or empty"}), 400
 
         if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
@@ -778,4 +775,3 @@ def list_gallery():
 @login_required
 def export_blocked():
     return jsonify({"error": "Chat history export is permanently disabled for privacy."}), 403
->>>>>>> 4ab8e73 (Force fix indentation in api.py)
