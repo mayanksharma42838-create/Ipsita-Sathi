@@ -637,4 +637,145 @@ def filmtv_upload():
         size = f.tell()
         f.seek(0)
         if size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
+<<<<<<< HEAD
        
+=======
+            return jsonify({"error": "file too large or empty"}), 400
+
+        if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
+            try:
+                old_path = Path(g.room.filmtv_source)
+                if old_path.exists():
+                    old_path.unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"Failed to delete old filmtv file: {e}")
+
+        filename = f"filmtv_{g.room.room_id}_{uuid.uuid4().hex}{ext}"
+        dest = Path(current_app.config["FILMTV_DIR"]) / filename
+        
+        f.save(str(dest))
+
+        g.room.filmtv_source_type = "upload"
+        g.room.filmtv_source = str(dest)
+        g.room.filmtv_title = (request.form.get("title") or original)[:256]
+        g.room.filmtv_playing = False
+        g.room.filmtv_position = 0.0
+        g.room.filmtv_host_id = g.member.id
+        g.room.filmtv_updated_at = utcnow()
+        
+        db.session.commit()
+
+        state = g.room.filmtv_state()
+        socketio.emit(
+            "filmtv_state",
+            {"state": state, "by": g.member.display_name, "action": "load"},
+            room=f"room:{g.room.room_id}",
+        )
+        return jsonify({"ok": True, "state": state})
+
+    except Exception as e:
+        logger.exception("Error in filmtv_upload")
+        db.session.rollback()
+        return jsonify({"error": "Internal server error during upload"}), 500
+
+
+@bp.get("/filmtv/stream")
+def filmtv_stream():
+    """Stream uploaded media with support for byte-range requests and query token auth."""
+    token = request.args.get("token")
+    member = None
+    if token:
+        member = Member.query.filter_by(session_token=token).first()
+    if not member:
+        member = get_member_from_request()
+    if not member:
+        return jsonify({"error": "Unauthorized stream request"}), 401
+
+    try:
+        room = member.room
+        if room.filmtv_source_type != "upload" or not room.filmtv_source:
+            return jsonify({"error": "no uploaded video/document"}), 404
+            
+        file_path = Path(room.filmtv_source)
+        if not file_path.is_file():
+            logger.error(f"FilmTV file missing on disk: {file_path}")
+            return jsonify({"error": "File not found"}), 404
+            
+        filmtv_dir = Path(current_app.config["FILMTV_DIR"]).resolve()
+        try:
+            file_path.resolve().relative_to(filmtv_dir)
+        except ValueError:
+            return jsonify({"error": "Unauthorized path"}), 403
+            
+        return send_file(str(file_path), conditional=True)
+    except Exception as e:
+        logger.error(f"Streaming error: {e}")
+        return jsonify({"error": "Streaming failed"}), 500
+
+
+@bp.post("/filmtv/clear")
+@login_required
+def filmtv_clear():
+    limited = rate_or_429("filmtv_clear", *current_app.config["RL_FILMTV"])
+    if limited:
+        return limited
+
+    if g.room.filmtv_source_type == "upload" and g.room.filmtv_source:
+        try:
+            Path(g.room.filmtv_source).unlink(missing_ok=True)
+        except OSError:
+            pass
+    g.room.filmtv_source_type = None
+    g.room.filmtv_source = None
+    g.room.filmtv_title = None
+    g.room.filmtv_playing = False
+    g.room.filmtv_position = 0.0
+    g.room.filmtv_updated_at = utcnow()
+    db.session.commit()
+    state = g.room.filmtv_state()
+    socketio.emit(
+        "filmtv_state",
+        {"state": state, "by": g.member.display_name, "action": "clear"},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "state": state})
+
+
+@bp.get("/gallery")
+@login_required
+def list_gallery():
+    """Fetch all non-expired media history for the room."""
+    rows = (
+        Message.query.filter(
+            Message.room_pk == g.room.id,
+            Message.deleted.is_(False),
+            Message.media_path.isnot(None),
+        )
+        .order_by(Message.created_at.desc())
+        .all()
+    )
+    out = []
+    for m in rows:
+        if m.is_expired():
+            continue
+        out.append(
+            {
+                "id": m.id,
+                "sender_id": m.sender_id,
+                "sender_name": m.sender.display_name if m.sender else "Partner",
+                "msg_type": m.msg_type,
+                "media_url": f"/api/media/{m.id}",
+                "media_mime": m.media_mime,
+                "created_at": m.created_at.isoformat(),
+            }
+        )
+    return jsonify({"gallery": out})
+
+
+@bp.route("/export", methods=["GET", "POST"])
+@bp.route("/messages/export", methods=["GET", "POST"])
+@bp.route("/history/export", methods=["GET", "POST"])
+@login_required
+def export_blocked():
+    return jsonify({"error": "Chat history export is permanently disabled for privacy."}), 403
+>>>>>>> 4ab8e73 (Force fix indentation in api.py)
