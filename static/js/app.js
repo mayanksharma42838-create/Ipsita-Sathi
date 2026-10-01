@@ -978,6 +978,10 @@ const App = (() => {
     });
     $("#btnFilmTVClose")?.addEventListener("click", closeFilmTV);
     $("#btnTheater")?.addEventListener("click", () => FilmTV.toggleTheater());
+    $("#btnFilmTVFullscreen")?.addEventListener("click", () =>
+      FilmTV.toggleFullscreen().catch((e) => setFilmTVError(e.message))
+    );
+    $("#btnFilmTVMessages")?.addEventListener("click", () => FilmTV.toggleMessages());
     $("#btnFilmTVLoad")?.addEventListener("click", () => loadFilmTVUrl());
 
     $("#filmtvUrl")?.addEventListener("keydown", (e) => {

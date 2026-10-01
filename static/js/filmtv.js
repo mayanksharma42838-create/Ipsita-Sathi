@@ -484,9 +484,19 @@ const FilmTV = (() => {
   }
 
   function closeTheater() {
+    const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
+    const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+    if (fullscreenElement && exitFullscreen) {
+      Promise.resolve(exitFullscreen.call(document)).catch((err) => {
+        console.warn("Unable to exit fullscreen:", err);
+      });
+    }
     document.body.classList.remove("theater-mode", "filmtv-open");
+    document.body.classList.remove("messages-open", "film-fullscreen");
     document.getElementById("filmtvStage")?.classList.remove("open");
     document.getElementById("btnFilmTV")?.classList.remove("active");
+    updateFullscreenButton();
+    updateMessagesButton();
   }
 
   function toggleTheater() {
@@ -502,6 +512,59 @@ const FilmTV = (() => {
     }
   }
 
+  function updateFullscreenButton() {
+    const button = document.getElementById("btnFilmTVFullscreen");
+    if (!button) return;
+    const roomSplit = document.getElementById("roomSplit");
+    const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+    const active = fullscreenElement === roomSplit;
+    document.body.classList.toggle("film-fullscreen", active);
+    button.textContent = active ? "Exit full screen" : "Full screen";
+    button.setAttribute("aria-pressed", String(active));
+  }
+
+  function updateMessagesButton() {
+    const button = document.getElementById("btnFilmTVMessages");
+    if (!button) return;
+    const visible = document.body.classList.contains("messages-open");
+    button.textContent = visible ? "Hide messages" : "Messages";
+    button.setAttribute("aria-pressed", String(visible));
+  }
+
+  async function toggleFullscreen() {
+    const roomSplit = document.getElementById("roomSplit");
+    if (!roomSplit) return;
+    const fullscreenElement = document.fullscreenElement || document.webkitFullscreenElement;
+    const exitFullscreen = document.exitFullscreen || document.webkitExitFullscreen;
+    if (fullscreenElement) {
+      if (exitFullscreen) await exitFullscreen.call(document);
+      return;
+    }
+
+    openTheater();
+    const requestFullscreen = roomSplit.requestFullscreen || roomSplit.webkitRequestFullscreen;
+    if (!requestFullscreen) {
+      throw new Error("Fullscreen is not supported by this browser.");
+    }
+    await requestFullscreen.call(roomSplit);
+    updateFullscreenButton();
+  }
+
+  function toggleMessages() {
+    if (!document.body.classList.contains("theater-mode")) openTheater();
+    const open = document.body.classList.toggle("messages-open");
+    updateMessagesButton();
+    if (open) {
+      const composer = document.getElementById("composerInput");
+      composer?.focus({ preventScroll: true });
+    }
+  }
+
+  if (typeof document !== "undefined") {
+    document.addEventListener("fullscreenchange", updateFullscreenButton);
+    document.addEventListener("webkitfullscreenchange", updateFullscreenButton);
+  }
+
   return {
     init,
     setSocket,
@@ -512,6 +575,8 @@ const FilmTV = (() => {
     openTheater,
     closeTheater,
     toggleTheater,
+    toggleFullscreen,
+    toggleMessages,
     updateStatusBadge,
   };
 })();

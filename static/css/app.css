@@ -980,6 +980,68 @@ body.theater-mode #messages {
   border: none;
 }
 
+body.theater-mode:not(.messages-open) #appMain {
+  display: none;
+}
+
+body.theater-mode.messages-open #appMain {
+  display: flex;
+}
+
+#roomSplit:fullscreen,
+#roomSplit:-webkit-full-screen {
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 100vh;
+  min-height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  background: #09090c;
+}
+
+#roomSplit:fullscreen #filmtvStage,
+#roomSplit:-webkit-full-screen #filmtvStage {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  resize: none;
+  border-radius: 0;
+}
+
+body.pdf-document-open.messages-open #roomSplit {
+  position: relative;
+}
+
+body.pdf-document-open.messages-open #appMain,
+body.pdf-document-open.theater-mode.messages-open #appMain {
+  display: flex;
+  position: absolute;
+  z-index: 5;
+  right: 12px;
+  bottom: 12px;
+  width: min(380px, calc(100% - 24px));
+  height: min(56vh, 520px);
+  max-height: calc(100% - 24px);
+  min-height: 180px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: rgba(18, 6, 12, 0.94);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+
+body.pdf-document-open.messages-open #messages {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
 /* Modals / drawers */
 .overlay {
   display: none;
