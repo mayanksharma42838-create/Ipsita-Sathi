@@ -320,7 +320,7 @@ const App = (() => {
                   sound: "notification.wav",
                   vibration: true,
                 });
-              } catch (e) {}
+              } catch (e) { }
             }
           }
         }
@@ -368,7 +368,7 @@ const App = (() => {
       gain.connect(audioCtx.destination);
       osc.start();
       osc.stop(audioCtx.currentTime + 0.3);
-    } catch (e) {}
+    } catch (e) { }
 
     if (navigator.vibrate) {
       navigator.vibrate([100, 50, 100]);
@@ -390,7 +390,7 @@ const App = (() => {
             ],
           });
         }
-      } catch (e) {}
+      } catch (e) { }
     }
 
     if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
@@ -399,7 +399,7 @@ const App = (() => {
           body: text || "New message received",
           icon: "/static/icons/icon-192.png",
         });
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
@@ -637,7 +637,7 @@ const App = (() => {
       console.warn("Saved room doodle fallback engaged:", error);
       try {
         if (typeof DoodleBoard !== "undefined" && DoodleBoard.clear) DoodleBoard.clear();
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
