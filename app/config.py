@@ -48,9 +48,11 @@ def _cors_origins() -> list[str] | str:
 
 class Config:
     SECRET_KEY = _stable_secret_key()
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DATABASE_URL", f"sqlite:///{INSTANCE_DIR / 'ipsita_sathi.db'}"
-    )
+    _raw_db_url = os.environ.get("DATABASE_URL", f"sqlite:///{INSTANCE_DIR / 'ipsita_sathi.db'}")
+    if _raw_db_url and _raw_db_url.startswith("postgres://"):
+        _raw_db_url = _raw_db_url.replace("postgres://", "postgresql://", 1)
+
+    SQLALCHEMY_DATABASE_URI = _raw_db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Keep Flask's request ceiling above FilmTV's per-file limit.

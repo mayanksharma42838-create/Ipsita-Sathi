@@ -14,13 +14,61 @@ from sqlalchemy import text
 from app.auth_helpers import get_member_from_request, login_required, room_member_count
 from app.crypto_utils import generate_member_token
 from app.extensions import db
-from app.models import Member, Room, utcnow
+from app.models import Member, Room, User, utcnow
 from app.security import rate_or_429, sanitize_display_name, validate_password
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
 
 _GENERIC_AUTH_FAIL = "Invalid Room ID or password"
 _join_guard = threading.Lock()
+
+
+@bp.post("/register")
+def register():
+    limited = rate_or_429("auth_register", *current_app.config["RL_AUTH"])
+    if limited:
+        return limited
+
+    data = request.get_json(silent=True) or {}
+    raw_id = data.get("identifier") or data.get("phone_number") or data.get("email")
+    identifier, id_type = _normalize_identifier(raw_id)
+    account_password = data.get("account_password") or data.get("password")
+    display_name = sanitize_display_name(data.get("display_name") or "Partner") or "Partner"
+
+    if not identifier:
+        return jsonify({"error": "Enter a valid Phone number or Gmail/Email address"}), 400
+
+    if not account_password or len(account_password) < current_app.config["MIN_PASSWORD_LENGTH"]:
+        pass_err = validate_password(account_password, current_app.config["MIN_PASSWORD_LENGTH"])
+        if pass_err:
+            return jsonify({"error": pass_err}), 400
+
+    existing_user = None
+    if id_type == "email":
+        existing_user = User.query.filter_by(email=identifier).first()
+    else:
+        existing_user = User.query.filter_by(phone_number=identifier).first()
+
+    if existing_user:
+        return jsonify({"error": "An account with this email/phone already exists. Please login."}), 409
+
+    user = User(
+        email=identifier if id_type == "email" else None,
+        phone_number=identifier if id_type == "phone" else None,
+        display_name=display_name,
+        session_token=generate_member_token(),
+    )
+    user.set_password(account_password)
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({
+        "ok": True,
+        "message": "Account created successfully",
+        "user_id": user.id,
+        "display_name": user.display_name,
+        "session_token": user.session_token,
+    }), 201
 
 
 def _begin_immediate() -> None:
@@ -31,15 +79,22 @@ def _begin_immediate() -> None:
         pass
 
 
-def _normalize_phone_number(value: object) -> str | None:
+def _normalize_identifier(value: object) -> tuple[str | None, str]:
     if not isinstance(value, str):
-        return None
-    compact = re.sub(r"[\s().-]", "", value.strip())
+        return None, "invalid"
+    v = value.strip()
+    if "@" in v:
+        # Email address
+        if re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            return v.lower(), "email"
+        return None, "invalid"
+    # Phone number
+    compact = re.sub(r"[\s().-]", "", v)
     if compact.startswith("+"):
         compact = compact[1:]
-    if not compact.isascii() or not compact.isdigit() or not 7 <= len(compact) <= 15:
-        return None
-    return compact
+    if compact.isascii() and compact.isdigit() and 7 <= len(compact) <= 15:
+        return compact, "phone"
+    return None, "invalid"
 
 
 def _next_partner_name(members: list[Member], max_members: int) -> str:
@@ -88,12 +143,16 @@ def login():
     if not isinstance(data, dict):
         return jsonify({"error": "JSON object required"}), 400
 
-    phone_number = _normalize_phone_number(data.get("phone_number"))
+    raw_id = data.get("identifier") or data.get("phone_number") or data.get("email")
+    norm_id, id_type = _normalize_identifier(raw_id)
+    if not norm_id:
+        return jsonify({"error": "Enter a valid phone number (7-15 digits) or email address"}), 400
+
+    phone_number = norm_id if id_type == "phone" else None
     password = data.get("password")
     legacy_room_id = data.get("legacy_room_id")
     resume_token = data.get("resume_token")
-    if not phone_number:
-        return jsonify({"error": "Enter a valid phone number with 7–15 digits"}), 400
+
     if not isinstance(password, str) or not password or len(password) > 256:
         return jsonify({"error": "Room password is required"}), 400
     if legacy_room_id is not None and not isinstance(legacy_room_id, str):
@@ -104,7 +163,13 @@ def login():
     with _join_guard:
         _begin_immediate()
         try:
-            room = Room.query.filter_by(phone_number=phone_number).first()
+            # Match by phone_number, email identifier, or legacy_room_id
+            room = None
+            if phone_number:
+                room = Room.query.filter_by(phone_number=phone_number).first()
+            if not room and id_type == "email":
+                room = Room.query.filter_by(phone_number=norm_id).first()
+            
             if room:
                 if not room.check_password(password):
                     db.session.rollback()
@@ -114,7 +179,7 @@ def login():
                 if not room or not room.check_password(password):
                     db.session.rollback()
                     return jsonify({"error": _GENERIC_AUTH_FAIL}), 403
-                room.phone_number = phone_number
+                room.phone_number = norm_id
                 db.session.flush()
             else:
                 password_error = validate_password(
@@ -125,7 +190,7 @@ def login():
                     return jsonify({"error": password_error}), 400
                 room = Room(
                     room_id=f"account-{secrets.token_urlsafe(18)}",
-                    phone_number=phone_number,
+                    phone_number=norm_id,
                     salt=secrets.token_bytes(16),
                     theme_opacity=0.92,
                 )
@@ -139,12 +204,22 @@ def login():
                 .order_by(Member.id.asc())
                 .all()
             )
-            member = next(
-                (item for item in members if resume_token and item.session_token == resume_token),
-                None,
-            )
             now = utcnow()
             idle_seconds = current_app.config["SESSION_IDLE_RESUME_SECONDS"]
+
+            matched_user = None
+            if id_type == "email":
+                matched_user = User.query.filter_by(email=norm_id).first()
+            else:
+                matched_user = User.query.filter_by(phone_number=norm_id).first()
+
+            member = None
+            if matched_user:
+                member = Member.query.filter_by(room_pk=room.id, user_id=matched_user.id).first()
+
+            if member is None and resume_token:
+                member = Member.query.filter_by(room_pk=room.id, session_token=resume_token).first()
+
             if member is None:
                 member = next(
                     (
@@ -160,19 +235,38 @@ def login():
                 if len(members) >= max_members:
                     db.session.rollback()
                     return jsonify({"error": "Private room already has two active members"}), 403
+
+                chosen_name = matched_user.display_name if matched_user else _next_partner_name(members, max_members)
+                taken_names = {m.display_name for m in members}
+                if chosen_name in taken_names:
+                    chosen_name = f"{chosen_name} {len(members) + 1}"
+
                 member = Member(
                     room_pk=room.id,
-                    display_name=_next_partner_name(members, max_members),
+                    display_name=chosen_name,
+                    user_id=matched_user.id if matched_user else None,
                 )
                 db.session.add(member)
+
+            if matched_user:
+                member.user_id = matched_user.id
+                if matched_user.display_name:
+                    clash = Member.query.filter(
+                        Member.room_pk == room.id,
+                        Member.display_name == matched_user.display_name,
+                        Member.id != member.id,
+                    ).first()
+                    if not clash:
+                        member.display_name = matched_user.display_name
 
             member.session_token = generate_member_token()
             member.is_online = True
             member.last_seen = now
             db.session.commit()
-        except Exception:
+        except Exception as e:
+            current_app.logger.error("Login exception: %s", e, exc_info=True)
             db.session.rollback()
-            return jsonify({"error": "Could not log in. Check the credentials and try again."}), 409
+            return jsonify({"error": f"Could not log in: {e}"}), 409
 
     from app import sockets as socket_mod
     socket_mod.disconnect_member(member.id)
@@ -421,12 +515,14 @@ def session_check():
             "member_id": member.id,
             "display_name": member.display_name,
             "phone_number": member.room.phone_number,
+            "email": member.user.email if member.user else None,
             "room_id": member.room.room_id,
             "session_token": member.session_token,
             "salt": base64.b64encode(member.room.salt).decode("utf-8"),
             "theme_preset": member.room.theme_preset,
             "theme_url": "/api/theme/background" if member.room.theme_preset == "custom" else None,
             "theme_opacity": member.room.theme_opacity,
+            "filmtv": member.room.filmtv_state(),
         }), 200
     except Exception:
         return jsonify({"authenticated": False}), 200

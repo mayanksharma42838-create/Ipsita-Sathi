@@ -77,6 +77,7 @@ def _member_from_sid_auth(auth: dict | None) -> Member | None:
 def on_connect(auth=None):
     member = _member_from_sid_auth(auth)
     if not member or not member.session_token:
+        disconnect()
         return False
     _bind_sid(request.sid, member.id)
     member.is_online = True
@@ -171,3 +172,105 @@ def on_filmtv_request_sync(_data=None):
     if not member:
         return
     emit("filmtv_state", {"state": member.room.filmtv_state(), "action": "sync", "by": "server"})
+
+
+@socketio.on("widget_sync")
+def on_widget_sync(data):
+    """Real-time sync for Home Screen Floating Widget (drawings, notes, photo previews)."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    
+    payload = {
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+        "type": data.get("type", "note"), # note, doodle, photo
+        "content": data.get("content"),
+        "timestamp": utcnow().isoformat(),
+    }
+    emit("widget_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("typing")
+def on_typing(data):
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    is_typing = bool(data.get("typing", False))
+    emit(
+        "typing",
+        {"member_id": member.id, "display_name": member.display_name, "typing": is_typing},
+        room=f"room:{member.room.room_id}",
+        include_self=False,
+    )
+
+
+@socketio.on("game_action")
+def on_game_action(data):
+    """Broadcast co-op mini-game actions (Overcooked kitchen actions, moves, resets)."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    emit("game_action", data, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("game_score_update")
+def on_game_score_update(data):
+    """Broadcast high scores and game achievements to partner."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+        "game": data.get("game"),
+        "score": data.get("score"),
+        "msg": data.get("msg"),
+    }
+    emit("game_score_update", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("netflix_play")
+def on_netflix_play(data):
+    """Synchronize Netflix playback play action."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": "play",
+        "position": data.get("position", 0.0),
+        "url": data.get("url"),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("netflix_play", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("netflix_pause")
+def on_netflix_pause(data):
+    """Synchronize Netflix playback pause action."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": "pause",
+        "position": data.get("position", 0.0),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("netflix_pause", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("netflix_seek")
+def on_netflix_seek(data):
+    """Synchronize Netflix playback seek action."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": "seek",
+        "position": data.get("position", 0.0),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("netflix_seek", payload, room=f"room:{member.room.room_id}", include_self=False)

@@ -300,14 +300,102 @@ const App = (() => {
     }
   }
 
+  function showWaNotification(sender, text) {
+    const banner = $("#waNotificationBanner");
+    const senderEl = $("#waNotifySender");
+    const msgEl = $("#waNotifyMessage");
+    if (banner && senderEl && msgEl) {
+      senderEl.textContent = sender || "Partner";
+      msgEl.textContent = text || "New message received";
+      banner.classList.add("show");
+      setTimeout(() => banner.classList.remove("show"), 4000);
+    }
+
+    // Play subtle chime sound
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(880, audioCtx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.3);
+    } catch (e) {}
+
+    if (navigator.vibrate) {
+      navigator.vibrate([100, 50, 100]);
+    }
+
+    if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
+      try {
+        new Notification(`💬 ${sender || "Partner"}`, {
+          body: text || "New message received",
+          icon: "/static/icons/icon-192.png",
+        });
+      } catch (e) {}
+    }
+  }
+
   function connectSocket() {
     if (state.socket) state.socket.disconnect();
     state.socket = io({ auth: { token: state.token } });
     FilmTV.setSocket(state.socket);
+    if (window.CoupleGames && window.CoupleGames.init) {
+      window.CoupleGames.init(state.socket, state.memberId);
+    }
 
     state.socket.on("new_message", (msg) => {
       renderMessage(msg);
       if (msg.media_url) loadGallery();
+      if (msg.sender_id !== state.memberId) {
+        let text = "New message received";
+        if (state.key && msg.ciphertext) {
+          text = decryptText(msg.ciphertext, state.key) || "New photo/message";
+        }
+        if (document.hidden || !document.hasFocus()) {
+          showWaNotification(msg.sender_name || "Partner", text);
+        }
+      }
+    });
+
+    state.socket.on("widget_sync", (data) => {
+      if (window.FloatingWidget && window.FloatingWidget.handleIncomingWidgetSync) {
+        window.FloatingWidget.handleIncomingWidgetSync(data);
+      }
+    });
+
+    state.socket.on("netflix_play", (payload) => {
+      FilmTV.openStage();
+      const netflixContainer = $("#netflixContainer");
+      const netflixIframe = $("#netflixIframe");
+      if (netflixContainer) netflixContainer.style.display = "block";
+      const empty = $("#filmtvEmpty");
+      if (empty) empty.style.display = "none";
+      if (payload && payload.url && netflixIframe) {
+        if (netflixIframe.src !== payload.url) {
+          netflixIframe.src = payload.url;
+        }
+      }
+      if (window.showWaNotification && payload.sender_name) {
+        window.showWaNotification(payload.sender_name, "🍿 Started Netflix Watch Party!");
+      }
+    });
+
+    state.socket.on("netflix_pause", (payload) => {
+      if (window.showWaNotification && payload.sender_name) {
+        window.showWaNotification(payload.sender_name, "⏸️ Paused Netflix Watch Party");
+      }
+    });
+
+    state.socket.on("netflix_seek", (payload) => {
+      if (window.showWaNotification && payload.sender_name) {
+        window.showWaNotification(payload.sender_name, `⏩ Seeked Netflix Watch Party to ${payload.position}s`);
+      }
     });
     state.socket.on("messages_expired", ({ ids }) => {
       ids.forEach((id) => {
@@ -921,12 +1009,32 @@ const App = (() => {
       toggleVoice().catch((e) => alert(e.message || "Mic permission needed"))
     );
 
+    $("#btnEnableNotifications")?.addEventListener("click", () => {
+      if ("Notification" in window) {
+        Notification.requestPermission().then((perm) => {
+          if (perm === "granted") {
+            alert("Background notifications enabled!");
+          } else {
+            alert("Notification permission " + perm);
+          }
+        });
+      } else {
+        alert("Web notifications not supported on this browser.");
+      }
+    });
+
+    $("#waNotificationBanner")?.addEventListener("click", () => {
+      $("#waNotificationBanner")?.classList.remove("show");
+      window.focus();
+    });
+
     $("#btnSettings")?.addEventListener("click", () => {
       const settingsName = $("#settingsName");
       if (settingsName) settingsName.value = state.displayName || "";
       openModal("settingsModal");
     });
 
+    $("#btnGames")?.addEventListener("click", () => openModal("gamesModal"));
     $("#btnTheme")?.addEventListener("click", () => openModal("themeModal"));
     $("#btnDoodle")?.addEventListener("click", () => openModal("doodleModal"));
     $("#btnIg")?.addEventListener("click", () => openModal("igModal"));
@@ -940,6 +1048,43 @@ const App = (() => {
       else openFilmTV();
     });
     $("#btnFilmTVClose")?.addEventListener("click", closeFilmTV);
+    $("#btnNetflixParty")?.addEventListener("click", () => {
+      FilmTV.openStage();
+      const netflixContainer = $("#netflixContainer");
+      const empty = $("#filmtvEmpty");
+      const iframeContainer = $("#filmtvIframeContainer");
+      const videoEl = $("#filmtvVideo");
+      if (videoEl) videoEl.style.display = "none";
+      if (iframeContainer) iframeContainer.style.display = "none";
+      if (empty) empty.style.display = "none";
+      if (netflixContainer) {
+        const isHidden = netflixContainer.style.display === "none";
+        netflixContainer.style.display = isHidden ? "block" : "none";
+        if (!isHidden && empty) empty.style.display = "flex";
+      }
+    });
+
+    $("#btnNetflixLoginToggle")?.addEventListener("click", () => {
+      const authPanel = $("#netflixAuthContainer");
+      if (authPanel) {
+        authPanel.style.display = authPanel.style.display === "none" ? "block" : "none";
+      }
+    });
+
+    $("#btnSyncNetflixUrl")?.addEventListener("click", () => {
+      const urlInput = $("#netflixUrlInput");
+      const netflixIframe = $("#netflixIframe");
+      const url = urlInput ? urlInput.value.trim() : "";
+      if (!url) {
+        alert("Please enter a valid Netflix watch URL (e.g. https://www.netflix.com/watch/...)");
+        return;
+      }
+      if (netflixIframe) netflixIframe.src = url;
+      if (state.socket) {
+        state.socket.emit("netflix_play", { url: url, position: 0 });
+      }
+    });
+
     $("#btnTheater")?.addEventListener("click", () => FilmTV.toggleTheater());
     $("#btnFilmTVFullscreen")?.addEventListener("click", () =>
       FilmTV.toggleFullscreen().catch((e) => setFilmTVError(e.message))
@@ -957,7 +1102,8 @@ const App = (() => {
       const f = e.target.files && e.target.files[0];
       if (f) uploadFilmTV(f);
     });
-    $("#btnFilmTVClear")?.addEventListener("click", () => clearFilmTV()); $$("[data-close]").forEach((b) =>
+    $("#btnFilmTVClear")?.addEventListener("click", () => clearFilmTV());
+    $$("[data-close]").forEach((b) =>
       b.addEventListener("click", () => closeModal(b.dataset.close))
     );
 
@@ -967,7 +1113,8 @@ const App = (() => {
 
     const onLogout = () => logout().catch((e) => alert(e.message || "Logout failed"));
     $("#btnLogout")?.addEventListener("click", onLogout);
-    $("#btnLogoutTop")?.addEventListener("click", onLogout); $$(".theme-swatch").forEach((el) => {
+    $("#btnLogoutTop")?.addEventListener("click", onLogout);
+    $$(".theme-swatch").forEach((el) => {
       el.addEventListener("click", () => saveTheme(el.dataset.theme).catch((e) => alert(e.message)));
     });
 
@@ -1047,8 +1194,8 @@ const App = (() => {
         OfflineStore.clearSession();
         return;
       }
-      if ($("#phoneNumber") && data.phone_number) {
-        $("#phoneNumber").value = data.phone_number;
+      if ($("#phoneNumber")) {
+        $("#phoneNumber").value = data.phone_number || data.email || "";
       }
     } catch {
       // Keep the login form available when the network is offline.
@@ -1056,6 +1203,13 @@ const App = (() => {
   }
 
   function init() {
+    window.AppSendMessage = (text) => {
+      if (text && state.key) {
+        const cipher = encryptText(text, state.key);
+        sendMessage(cipher).catch((e) => alert(e.message));
+      }
+    };
+
     PrivacyGuard.init();
     bindUI();
     initFilmTV();

@@ -1,11 +1,10 @@
 {
-  "appId": "com.ipsitasathi.app",
-  "appName": "Ipsita-Sathi",
+  "appId": "com.ipsita.sathi",
+  "appName": "sathi",
   "webDir": "www",
   "server": {
-    "androidScheme": "https",
-    "cleartext": true,
-    "url": "http://10.0.2.2:5000"
+    "url": "https://ipsita-sathi.onrender.com",
+    "cleartext": true
   },
   "plugins": {
     "SplashScreen": {

@@ -19,6 +19,15 @@ def rate_limit(key: str, limit: int, window_sec: float) -> bool:
     """Return True if allowed; False if over limit."""
     now = time.monotonic()
     with _lock:
+        # Prevent memory leaks by periodically sweeping stale rate limit keys
+        if len(_hits) > 500:
+            stale_keys = [
+                k for k, q in _hits.items()
+                if not q or (now - q[-1] > window_sec)
+            ]
+            for k in stale_keys:
+                del _hits[k]
+
         q = _hits[key]
         while q and now - q[0] > window_sec:
             q.popleft()

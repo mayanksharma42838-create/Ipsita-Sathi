@@ -191,20 +191,23 @@ def _start_expiry_sweeper(app: Flask) -> None:
                         Message.expires_at <= now,
                     ).all()
                     by_room: dict[str, list[int]] = {}
+                    media_paths_to_unlink: list[str] = []
                     for msg in expired:
-                        socketio.sleep(0.01)
                         msg.deleted = True
                         if msg.media_path:
-                            try:
-                                P(msg.media_path).unlink(missing_ok=True)
-                            except (OSError, FileNotFoundError):
-                                pass
+                            media_paths_to_unlink.append(msg.media_path)
                             msg.media_path = None
                         rid = msg.room.room_id if msg.room else None
                         if rid:
                             by_room.setdefault(rid, []).append(msg.id)
                     if expired:
                         db.session.commit()
+
+                    for media_path in media_paths_to_unlink:
+                        try:
+                            P(media_path).unlink(missing_ok=True)
+                        except (OSError, FileNotFoundError):
+                            pass
                     for rid, ids in by_room.items():
                         socketio.emit("messages_expired", {"ids": ids}, room=f"room:{rid}")
 

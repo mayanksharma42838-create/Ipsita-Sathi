@@ -553,6 +553,7 @@ const FilmTV = (() => {
   function toggleMessages() {
     if (!document.body.classList.contains("theater-mode")) openTheater();
     const open = document.body.classList.toggle("messages-open");
+    document.body.classList.toggle("mobile-chat-open", open);
     updateMessagesButton();
     if (open) {
       const composer = document.getElementById("composerInput");

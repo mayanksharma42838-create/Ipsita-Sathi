@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file, url_for
 from itsdangerous import BadSignature, URLSafeTimedSerializer
+from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
 
 from app.auth_helpers import login_required, get_member_from_request
@@ -188,7 +189,8 @@ def list_messages():
         )
 
     rows = (
-        Message.query.filter_by(room_pk=g.room.id, deleted=False)
+        Message.query.options(joinedload(Message.sender))
+        .filter_by(room_pk=g.room.id, deleted=False)
         .order_by(Message.created_at.asc())
         .limit(500)
         .all()
@@ -976,7 +978,8 @@ def filmtv_clear():
 def list_gallery():
     """Fetch all non-expired media history for the room."""
     rows = (
-        Message.query.filter(
+        Message.query.options(joinedload(Message.sender))
+        .filter(
             Message.room_pk == g.room.id,
             Message.deleted.is_(False),
             Message.media_path.isnot(None),

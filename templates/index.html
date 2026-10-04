@@ -39,6 +39,33 @@
 
 <body>
   <div class="ambient" aria-hidden="true"></div>
+
+  <!-- WhatsApp-Style Background Notification Banner -->
+  <div id="waNotificationBanner" class="wa-notification-banner">
+    <div class="wa-notify-avatar">💬</div>
+    <div class="wa-notify-content">
+      <strong id="waNotifySender">Partner</strong>
+      <p id="waNotifyMessage">New message received</p>
+    </div>
+  </div>
+
+  <!-- Home Screen Floating Extension Widget Overlay -->
+  <div id="floatingWidgetOverlay" class="floating-widget-container hidden">
+    <div class="floating-widget-header">
+      <span class="widget-title">✨ Ipsita-Sathi Floating Sync</span>
+      <div class="widget-controls">
+        <button id="btnWidgetPip" type="button" class="btn sm ghost" title="Pop out floating window">📌 PiP</button>
+      </div>
+    </div>
+    <div class="floating-widget-body">
+      <div id="widgetPreviewText" class="widget-text-preview">Connected & Synced</div>
+      <canvas id="widgetCanvas" width="280" height="120"></canvas>
+      <div class="widget-input-row">
+        <input type="text" id="widgetInput" placeholder="Send note to partner..." />
+        <button id="btnWidgetSend" type="button" class="btn sm">Send</button>
+      </div>
+    </div>
+  </div>
   <div id="appShell">
     <div class="offline-banner" id="offlineBanner">You're offline — messages will sync when connection returns.</div>
 
@@ -47,10 +74,10 @@
       <p class="tagline">Your private room, ready whenever you return.</p>
       <div class="panel">
         <form id="loginForm" novalidate>
-          <label for="phoneNumber">Phone number</label>
-          <input type="tel" id="phoneNumber" inputmode="tel" autocomplete="tel" required
-            placeholder="+1 555 123 4567" />
-          <label for="roomPassword">Room password</label>
+          <label for="phoneNumber">Phone number or Gmail / Email</label>
+          <input type="text" id="phoneNumber" autocomplete="username" required
+            placeholder="Phone (+1 555...) or Email (you@gmail.com)" />
+          <label for="roomPassword">Shared room password</label>
           <input type="password" id="roomPassword" autocomplete="current-password" required
             placeholder="Enter your private room password" />
 
@@ -81,6 +108,7 @@
           </div>
         </div>
         <div class="toolbar">
+          <button type="button" class="btn ghost" id="btnGames" title="Couple Games">🎮 Games</button>
           <button type="button" class="btn ghost" id="btnGallery" title="Room Gallery">Vault</button>
           <button type="button" class="btn ghost" id="btnFilmTV" title="FilmTV Watch Party">FilmTV</button>
           <button type="button" class="btn ghost" id="btnTheme">Theme</button>
@@ -101,6 +129,7 @@
             </div>
             <div class="filmtv-header-actions">
               <span class="filmtv-sync" id="filmtvSyncBadge">♡ ready</span>
+              <button type="button" class="btn ghost sm" id="btnNetflixParty" title="Netflix Watch Party">🍿 Netflix</button>
               <button type="button" class="btn ghost sm" id="btnTheater" title="Theater mode">Theater</button>
               <button type="button" class="btn ghost sm" id="btnFilmTVMessages" aria-pressed="false">Messages</button>
               <button type="button" class="btn ghost sm" id="btnFilmTVFullscreen" aria-pressed="false">Full
@@ -117,6 +146,27 @@
               <p class="hint">Supports YouTube, Docs, and web apps via interactive iframe.</p>
             </div>
             <div id="filmtvIframeContainer" style="width:100%;height:100%;display:none;"></div>
+
+            <!-- Netflix Watch Party Container -->
+            <div id="netflixContainer" class="netflix-container" style="display:none;width:100%;height:100%;position:relative;background:#000;">
+              <div class="netflix-controls-bar">
+                <span class="netflix-brand">🍿 Netflix Watch Party</span>
+                <div class="netflix-bar-inputs">
+                  <input type="url" id="netflixUrlInput" placeholder="https://www.netflix.com/watch/..." />
+                  <button type="button" class="btn sm" id="btnSyncNetflixUrl">Sync Party</button>
+                  <button type="button" class="btn sm ghost" id="btnNetflixLoginToggle">🔑 Auth Login</button>
+                </div>
+              </div>
+              
+              <div id="netflixAuthContainer" class="netflix-auth-panel" style="display:none;padding:10px;background:rgba(18,24,38,0.95);color:#fff;border-bottom:1px solid #e50914;">
+                <p class="hint" style="margin:0 0 6px 0;color:#e50914;">🔒 Log in securely to Netflix below to enable synchronized session streaming.</p>
+                <iframe id="netflixAuthFrame" src="https://www.netflix.com/login" title="Netflix Login" style="width:100%;height:260px;border:none;border-radius:8px;background:#fff;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+              </div>
+
+              <div id="netflixPlayerWrap" class="netflix-player-wrap" style="width:100%;height:calc(100% - 46px);position:relative;">
+                <iframe id="netflixIframe" src="https://www.netflix.com/" title="Netflix Watch Party" style="width:100%;height:100%;border:none;" allow="autoplay; fullscreen; encrypted-media"></iframe>
+              </div>
+            </div>
             <section id="filmtvDocumentViewer" class="filmtv-document-viewer" aria-label="Shared PDF document" hidden>
               <div class="filmtv-document-toolbar" role="toolbar" aria-label="Document annotations">
                 <div class="filmtv-document-tools">
@@ -207,16 +257,26 @@
   <!-- Settings -->
   <div class="overlay" id="settingsModal">
     <div class="modal">
-      <h3>Display name</h3>
+      <h3>Display name & Preferences</h3>
       <label>How you appear in this room</label>
       <input type="text" id="settingsName" maxlength="64" />
-      <div class="modal-actions">
+
+      <label style="margin-top:14px;display:block;">Background Notifications</label>
+      <button type="button" class="btn ghost sm block" id="btnEnableNotifications" style="text-align:left;margin-top:4px;">
+        🔔 Enable Background Notifications
+      </button>
+
+      <label style="display:flex;align-items:center;gap:10px;margin-top:14px;cursor:pointer;">
+        <input type="checkbox" id="toggleFloatingWidget" style="width:18px;height:18px;" />
+        <span>Home Screen Floating Window</span>
+      </label>
+
+      <div class="modal-actions" style="margin-top:16px;">
         <button type="button" class="btn" id="btnSaveName">Save</button>
         <button type="button" class="btn ghost" id="btnLogout" title="Revoke this device session">Log out</button>
         <button type="button" class="btn ghost" data-close="settingsModal">Close</button>
       </div>
-      <p class="hint">Export / download chat history is permanently disabled. Log out revokes your session token
-        immediately.</p>
+      <p class="hint">Export / download chat history is permanently disabled. Log out revokes your session token immediately.</p>
     </div>
   </div>
 
@@ -315,6 +375,119 @@
     </div>
   </div>
 
+  <!-- Couple Games Section -->
+  <div class="overlay" id="gamesModal">
+    <div class="modal modal-lg">
+      <div class="games-header">
+        <h3>🎮 Couple Games Hub</h3>
+        <p class="hint">Play together in real time, take turns, or launch co-op sessions!</p>
+      </div>
+
+      <div class="game-tabs" style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;">
+        <button type="button" class="btn sm ghost game-tab-btn active" data-tab="hub">Game Hub</button>
+        <button type="button" class="btn sm ghost game-tab-btn" data-tab="overcooked">🍳 Overcooked! Co-Op</button>
+        <button type="button" class="btn sm ghost game-tab-btn" data-tab="candycrush">🍬 Candy Crush</button>
+        <button type="button" class="btn sm ghost game-tab-btn" data-tab="boardgames">🎲 Board Games</button>
+      </div>
+
+      <!-- Tab 1: Game Hub -->
+      <div id="gameView-hub" class="game-view">
+        <div class="games-grid">
+          <div class="game-card" onclick="CoupleGames.showGameView('overcooked')">
+            <div class="game-card-icon">🍳</div>
+            <h4>Overcooked! Kitchen Challenge</h4>
+            <p>Collaborate in real time to chop, grill, assemble, and serve burger & salad orders!</p>
+            <span class="game-badge">Live Co-Op</span>
+          </div>
+
+          <div class="game-card" onclick="CoupleGames.showGameView('candycrush')">
+            <div class="game-card-icon">🍬</div>
+            <h4>Candy Crush Match-3</h4>
+            <p>Match sweet candies, build combo streaks, and compete for high scores with partner!</p>
+            <span class="game-badge">Match 3</span>
+          </div>
+
+          <div class="game-card" onclick="CoupleGames.showGameView('boardgames')">
+            <div class="game-card-icon">🎲</div>
+            <h4>Classic Board Games</h4>
+            <p>Ludo, Uno & Monopoly web variants with quick-join room link sharing.</p>
+            <span class="game-badge">Board Games</span>
+          </div>
+
+          <div class="game-card">
+            <div class="game-card-icon">🏰</div>
+            <h4>It Takes Two</h4>
+            <p>Award-winning co-op journey built purely for two players. Launch steam/friend pass session.</p>
+            <a href="https://www.ea.com/games/it-takes-two" target="_blank" rel="noopener" class="btn sm ghost">Launch / Guide</a>
+          </div>
+
+          <div class="game-card">
+            <div class="game-card-icon">🌾</div>
+            <h4>Stardew Valley</h4>
+            <p>Build & nurture a cozy farm together. Share farm invite codes directly to chat.</p>
+            <a href="https://www.stardewvalley.net/" target="_blank" rel="noopener" class="btn sm ghost">Farm Hub</a>
+          </div>
+
+          <div class="game-card">
+            <div class="game-card-icon">✨</div>
+            <h4>Sky: Children of the Light</h4>
+            <p>Explore magical realms hand-in-hand in a peaceful multiplayer experience.</p>
+            <a href="https://www.thatskygame.com/" target="_blank" rel="noopener" class="btn sm ghost">Sky World</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Overcooked Mini-Game -->
+      <div id="gameView-overcooked" class="game-view hidden">
+        <div class="game-kitchen-wrap" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <div class="kitchen-stats-bar" style="display:flex;gap:16px;font-size:0.9rem;">
+            <span>⏱️ Time: <strong id="ocTimeDisplay">120s</strong></span>
+            <span>⭐ Score: <strong id="ocScoreDisplay">0</strong></span>
+            <span>📋 Order: <strong id="ocOrderDisplay">Cheeseburger</strong></span>
+          </div>
+
+          <canvas id="overcookedCanvas" width="400" height="140" style="border-radius:12px;border:1px solid rgba(255,143,171,0.3);max-width:100%;"></canvas>
+
+          <div class="kitchen-controls" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+            <button type="button" class="btn sm" id="btnOcChop">🔪 Chop Lettuce</button>
+            <button type="button" class="btn sm" id="btnOcGrill">🔥 Grill Patty</button>
+            <button type="button" class="btn sm" id="btnOcServe">🍔 Serve Dish</button>
+            <button type="button" class="btn sm ghost" id="btnOcReset">🔄 Reset Kitchen</button>
+          </div>
+          <p class="hint">Plate Assembly: <strong id="ocAssemblyDisplay">Bun</strong></p>
+        </div>
+      </div>
+
+      <!-- Tab 3: Candy Crush Match-3 -->
+      <div id="gameView-candycrush" class="game-view hidden">
+        <div class="candy-crush-wrap" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <div class="kitchen-stats-bar" style="display:flex;gap:16px;align-items:center;">
+            <span>🍬 Score: <strong id="ccScoreDisplay">0</strong></span>
+            <button type="button" class="btn sm ghost" id="btnCcReset">🔄 New Board</button>
+          </div>
+          <canvas id="candyCrushCanvas" width="300" height="300" style="border-radius:12px;border:1px solid rgba(255,143,171,0.3);max-width:100%;"></canvas>
+          <p class="hint">Click adjacent candies to swap and match 3 in a row!</p>
+        </div>
+      </div>
+
+      <!-- Tab 4: Board Games -->
+      <div id="gameView-boardgames" class="game-view hidden">
+        <div class="board-games-wrap">
+          <h4>Co-Op Room Share</h4>
+          <p class="hint">Paste your Ludo, Uno, or Monopoly room code/link to send directly to your partner's chat!</p>
+          <div class="widget-input-row" style="margin-top:10px;">
+            <input type="text" id="gameCodeInput" placeholder="Paste Ludo / Uno room code or link..." />
+            <button type="button" class="btn sm" id="btnShareGameCode">Share to Chat</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:16px;">
+        <button type="button" class="btn ghost" data-close="gamesModal">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Gallery / Vault -->
   <div class="overlay" id="galleryModal">
     <div class="modal modal-lg">
@@ -352,6 +525,8 @@
   <script src="/static/js/doodle.js?v=2.2"></script>
   <script src="/static/js/pdf-viewer.js?v=1.1"></script>
   <script src="/static/js/filmtv.js?v=2.5"></script>
+  <script src="/static/js/widget.js?v=1.0"></script>
+  <script src="/static/js/games.js?v=1.0"></script>
   <script src="/static/js/app.js?v=2.4"></script>
 
 </body>

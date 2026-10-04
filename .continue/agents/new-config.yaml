@@ -1,0 +1,5 @@
+models:
+  - title: Gemini Pro
+    provider: gemini
+    model: gemini-1.5-pro
+    apiKey: AQ.Ab8RN6KiUNb89GdqUTULATWrUgJDEPu_a4C5zvzQhd0ehXPOg
