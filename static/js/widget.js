@@ -37,6 +37,16 @@
       btnPip.addEventListener("click", requestFloatingPipWindow);
     }
 
+    const btnClose = document.getElementById("btnWidgetClose");
+    if (btnClose) {
+      btnClose.addEventListener("click", () => {
+        toggleWidgetOverlay(false);
+        const toggle = document.getElementById("toggleFloatingWidget");
+        if (toggle) toggle.checked = false;
+        localStorage.setItem("floating_widget_enabled", "0");
+      });
+    }
+
     const btnSend = document.getElementById("btnWidgetSend");
     const input = document.getElementById("widgetInput");
     if (btnSend && input) {
@@ -78,8 +88,9 @@
     const preview = document.getElementById("widgetPreviewText");
     if (preview) preview.textContent = text.trim();
 
-    if (window.appSocket && window.appSocket.connected) {
-      window.appSocket.emit("widget_sync", {
+    const socket = window.appSocket || window.AppSocket;
+    if (socket && socket.connected) {
+      socket.emit("widget_sync", {
         type: "note",
         content: text.trim(),
       });

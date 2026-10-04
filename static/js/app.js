@@ -300,6 +300,49 @@ const App = (() => {
     }
   }
 
+  async function requestNotificationPermissions(silent = false) {
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      try {
+        const localNotifs = window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+        if (localNotifs) {
+          const perm = await localNotifs.checkPermissions();
+          if (perm.display !== "granted") {
+            const req = await localNotifs.requestPermissions();
+            if (req.display === "granted") {
+              if (!silent) alert("Native mobile notifications enabled!");
+              try {
+                await localNotifs.createChannel({
+                  id: "ipsita_messages",
+                  name: "Ipsita-Sathi Messages",
+                  description: "Room notifications for messages and sync events",
+                  importance: 5,
+                  visibility: 1,
+                  sound: "notification.wav",
+                  vibration: true,
+                });
+              } catch (e) {}
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Capacitor LocalNotifications error:", err);
+      }
+    }
+
+    if ("Notification" in window) {
+      if (Notification.permission === "default") {
+        if (!silent) {
+          const perm = await Notification.requestPermission();
+          if (perm === "granted") {
+            alert("Background notifications enabled!");
+          }
+        }
+      } else if (Notification.permission === "granted" && !silent) {
+        alert("Notifications are already enabled.");
+      }
+    }
+  }
+
   function showWaNotification(sender, text) {
     const banner = $("#waNotificationBanner");
     const senderEl = $("#waNotifySender");
@@ -331,6 +374,25 @@ const App = (() => {
       navigator.vibrate([100, 50, 100]);
     }
 
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+      try {
+        const localNotifs = window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+        if (localNotifs) {
+          localNotifs.schedule({
+            notifications: [
+              {
+                title: `💬 ${sender || "Partner"}`,
+                body: text || "New message received",
+                id: Math.floor(Math.random() * 100000) + 1,
+                schedule: { at: new Date(Date.now() + 100) },
+                channelId: "ipsita_messages",
+              },
+            ],
+          });
+        }
+      } catch (e) {}
+    }
+
     if ("Notification" in window && Notification.permission === "granted" && document.hidden) {
       try {
         new Notification(`💬 ${sender || "Partner"}`, {
@@ -344,10 +406,12 @@ const App = (() => {
   function connectSocket() {
     if (state.socket) state.socket.disconnect();
     state.socket = io({ auth: { token: state.token } });
+    window.appSocket = state.socket;
     FilmTV.setSocket(state.socket);
     if (window.CoupleGames && window.CoupleGames.init) {
       window.CoupleGames.init(state.socket, state.memberId);
     }
+    requestNotificationPermissions(true);
 
     state.socket.on("new_message", (msg) => {
       renderMessage(msg);
@@ -1014,17 +1078,7 @@ const App = (() => {
     );
 
     $("#btnEnableNotifications")?.addEventListener("click", () => {
-      if ("Notification" in window) {
-        Notification.requestPermission().then((perm) => {
-          if (perm === "granted") {
-            alert("Background notifications enabled!");
-          } else {
-            alert("Notification permission " + perm);
-          }
-        });
-      } else {
-        alert("Web notifications not supported on this browser.");
-      }
+      requestNotificationPermissions(false);
     });
 
     $("#waNotificationBanner")?.addEventListener("click", () => {
