@@ -70,6 +70,44 @@
       });
     }
   }
+  function showGameView(gameId) {
+    if (!gameId) return;
+    const activeTabName = String(gameId).replace("gameView-", "").replace(".", "");
+
+    const views = document.querySelectorAll(".game-view, .game-container");
+    views.forEach((v) => {
+      v.style.display = "none";
+      v.classList.add("hidden");
+    });
+
+    const activeView =
+      document.getElementById(gameId) ||
+      document.getElementById(`gameView-${activeTabName}`) ||
+      document.querySelector("." + gameId) ||
+      document.querySelector("." + activeTabName);
+
+    if (activeView) {
+      activeView.style.display = "block";
+      activeView.classList.remove("hidden");
+    } else {
+      console.warn("Game view not found for ID:", gameId);
+    }
+
+    const tabs = document.querySelectorAll(".game-tab-btn");
+    tabs.forEach((t) => {
+      if (t.dataset.tab === activeTabName || t.dataset.tab === gameId) {
+        t.classList.add("active");
+      } else {
+        t.classList.remove("active");
+      }
+    });
+
+    if (activeTabName === "overcooked") {
+      resetOvercooked();
+    } else if (activeTabName === "candycrush") {
+      resetCandyCrush();
+    }
+  }
 
   // ─────────────────────────────────────────────────────────────
   // 1. OVERCOOKED STYLE CO-OP MINI-GAME
