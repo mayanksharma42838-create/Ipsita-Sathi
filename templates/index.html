@@ -148,23 +148,29 @@
             <div id="filmtvIframeContainer" style="width:100%;height:100%;display:none;"></div>
 
             <!-- Netflix Watch Party Container -->
-            <div id="netflixContainer" class="netflix-container" style="display:none;width:100%;height:100%;position:relative;background:#000;">
-              <div class="netflix-controls-bar">
-                <span class="netflix-brand">🍿 Netflix Watch Party</span>
-                <div class="netflix-bar-inputs">
-                  <input type="url" id="netflixUrlInput" placeholder="https://www.netflix.com/watch/..." />
-                  <button type="button" class="btn sm" id="btnSyncNetflixUrl">Sync Party</button>
-                  <button type="button" class="btn sm ghost" id="btnNetflixLoginToggle">🔑 Auth Login</button>
-                </div>
-              </div>
-              
-              <div id="netflixAuthContainer" class="netflix-auth-panel" style="display:none;padding:10px;background:rgba(18,24,38,0.95);color:#fff;border-bottom:1px solid #e50914;">
-                <p class="hint" style="margin:0 0 6px 0;color:#e50914;">🔒 Log in securely to Netflix below to enable synchronized session streaming.</p>
-                <iframe id="netflixAuthFrame" src="https://www.netflix.com/login" title="Netflix Login" style="width:100%;height:260px;border:none;border-radius:8px;background:#fff;" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+            <div id="netflixContainer" class="netflix-container" style="display:none;width:100%;height:100%;position:relative;background:#0d1117;padding:16px;box-sizing:border-box;border-radius:12px;border:1px solid #e50914;">
+              <div class="netflix-controls-bar" style="margin-bottom:12px;">
+                <span class="netflix-brand">🍿 Netflix Watch Party Sync Station</span>
               </div>
 
-              <div id="netflixPlayerWrap" class="netflix-player-wrap" style="width:100%;height:calc(100% - 46px);position:relative;">
-                <iframe id="netflixIframe" src="https://www.netflix.com/" title="Netflix Watch Party" style="width:100%;height:100%;border:none;" allow="autoplay; fullscreen; encrypted-media"></iframe>
+              <div class="netflix-sync-card" style="background:rgba(229,9,20,0.08);border:1px solid rgba(229,9,20,0.3);padding:14px;border-radius:10px;">
+                <label style="color:#e50914;font-weight:bold;margin-bottom:6px;display:block;">Paste Netflix Title or Watch Link</label>
+                <div class="netflix-bar-inputs" style="display:flex;gap:8px;margin-bottom:10px;">
+                  <input type="url" id="netflixUrlInput" placeholder="https://www.netflix.com/watch/80192098" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e50914;background:#121826;color:#fff;" />
+                  <button type="button" class="btn sm" id="btnSyncNetflixUrl" style="background:#e50914;color:#fff;">🚀 Sync & Launch</button>
+                </div>
+                <p class="hint" style="margin:0;color:rgba(255,255,255,0.8);font-size:0.82rem;">
+                  ℹ️ Due to Netflix security policies, direct iframe embeds are restricted. Click <strong>Sync & Launch</strong> to co-watch in synchronized tabs with real-time room play/pause/seek controls!
+                </p>
+              </div>
+
+              <div id="netflixPlayerWrap" class="netflix-player-wrap" style="margin-top:14px;padding:12px;background:rgba(0,0,0,0.4);border-radius:10px;display:flex;flex-direction:column;gap:8px;align-items:center;">
+                <div style="display:flex;gap:10px;align-items:center;">
+                  <button type="button" class="btn sm ghost" id="btnNetflixPlay">▶️ Play Sync</button>
+                  <button type="button" class="btn sm ghost" id="btnNetflixPause">⏸️ Pause Sync</button>
+                  <a id="btnNetflixOpenTab" href="https://www.netflix.com" target="_blank" rel="noopener" class="btn sm" style="background:#e50914;color:#fff;text-decoration:none;">🍿 Open Netflix Tab</a>
+                </div>
+                <div id="netflixStatusText" style="font-size:0.85rem;color:var(--muted);">Ready to sync session</div>
               </div>
             </div>
             <section id="filmtvDocumentViewer" class="filmtv-document-viewer" aria-label="Shared PDF document" hidden>
@@ -412,27 +418,6 @@
             <h4>Classic Board Games</h4>
             <p>Ludo, Uno & Monopoly web variants with quick-join room link sharing.</p>
             <span class="game-badge">Board Games</span>
-          </div>
-
-          <div class="game-card">
-            <div class="game-card-icon">🏰</div>
-            <h4>It Takes Two</h4>
-            <p>Award-winning co-op journey built purely for two players. Launch steam/friend pass session.</p>
-            <a href="https://www.ea.com/games/it-takes-two" target="_blank" rel="noopener" class="btn sm ghost">Launch / Guide</a>
-          </div>
-
-          <div class="game-card">
-            <div class="game-card-icon">🌾</div>
-            <h4>Stardew Valley</h4>
-            <p>Build & nurture a cozy farm together. Share farm invite codes directly to chat.</p>
-            <a href="https://www.stardewvalley.net/" target="_blank" rel="noopener" class="btn sm ghost">Farm Hub</a>
-          </div>
-
-          <div class="game-card">
-            <div class="game-card-icon">✨</div>
-            <h4>Sky: Children of the Light</h4>
-            <p>Explore magical realms hand-in-hand in a peaceful multiplayer experience.</p>
-            <a href="https://www.thatskygame.com/" target="_blank" rel="noopener" class="btn sm ghost">Sky World</a>
           </div>
         </div>
       </div>

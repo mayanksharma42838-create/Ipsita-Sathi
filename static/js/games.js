@@ -167,6 +167,11 @@
         game: "overcooked",
         type: "action",
         kitchen: ocKitchen,
+        score: ocScore,
+      });
+    }
+  }
+
   function updateOcUi() {
     const scoreEl = document.getElementById("ocScoreDisplay");
     const orderEl = document.getElementById("ocOrderDisplay");
@@ -362,21 +367,3 @@
     showGameView: showGameView,
   };
 })();
-        score: ocScore,
-      });
-    }
-  }
-  function showGameView(tabName) {
-    activeTab = tabName;
-    const views = document.querySelectorAll(".game-view");
-    views.forEach((v) => v.classList.add("hidden"));
-
-    const target = document.getElementById(`gameView-${tabName}`);
-    if (target) target.classList.remove("hidden");
-
-    if (tabName === "overcooked") {
-      resetOvercooked();
-    } else if (tabName === "candycrush") {
-      resetCandyCrush();
-    }
-  }

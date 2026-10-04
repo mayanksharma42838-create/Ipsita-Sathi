@@ -11,7 +11,7 @@ from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
-from flask import Blueprint, current_app, g, jsonify, request, send_file, url_for
+from flask import Blueprint, Response, current_app, g, jsonify, request, send_file, url_for
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from sqlalchemy.orm import joinedload
 from werkzeug.utils import secure_filename
@@ -519,14 +519,21 @@ def upload_theme():
 @bp.get("/theme/background")
 @login_required
 def theme_background():
-    if not g.room.theme_path or not os.path.isfile(g.room.theme_path):
-        return jsonify({"error": "no custom theme"}), 404
-    themes = Path(current_app.config["THEMES_DIR"]).resolve()
-    try:
-        Path(g.room.theme_path).resolve().relative_to(themes)
-    except ValueError:
-        return jsonify({"error": "not found"}), 404
-    return send_file(g.room.theme_path)
+    if g.room.theme_path and os.path.isfile(g.room.theme_path):
+        themes = Path(current_app.config["THEMES_DIR"]).resolve()
+        try:
+            Path(g.room.theme_path).resolve().relative_to(themes)
+            return send_file(g.room.theme_path)
+        except ValueError:
+            pass
+    
+    # 1x1 transparent fallback PNG to prevent 404 console errors when custom background is unset
+    fallback_png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05"
+        b"\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    return Response(fallback_png, mimetype="image/png", status=200)
 
 
 @bp.post("/instagram/session")
@@ -634,14 +641,19 @@ def save_doodle():
 @bp.get("/doodle/latest")
 @login_required
 def get_doodle():
-    if not g.room.doodle_path or not os.path.isfile(g.room.doodle_path):
-        return jsonify({"error": "no doodle"}), 404
-    doodles = Path(current_app.config["DOODLES_DIR"]).resolve()
-    try:
-        Path(g.room.doodle_path).resolve().relative_to(doodles)
-    except ValueError:
-        return jsonify({"error": "not found"}), 404
-    return send_file(g.room.doodle_path, mimetype="image/png")
+    if g.room.doodle_path and os.path.isfile(g.room.doodle_path):
+        doodles = Path(current_app.config["DOODLES_DIR"]).resolve()
+        try:
+            Path(g.room.doodle_path).resolve().relative_to(doodles)
+            return send_file(g.room.doodle_path, mimetype="image/png")
+        except ValueError:
+            pass
+    fallback_png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05"
+        b"\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    return Response(fallback_png, mimetype="image/png", status=200)
 
 
 # ─── FilmTV Watch Party (native HTML5 only) ─────────────────────────

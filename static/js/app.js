@@ -372,14 +372,16 @@ const App = (() => {
     state.socket.on("netflix_play", (payload) => {
       FilmTV.openStage();
       const netflixContainer = $("#netflixContainer");
-      const netflixIframe = $("#netflixIframe");
       if (netflixContainer) netflixContainer.style.display = "block";
       const empty = $("#filmtvEmpty");
       if (empty) empty.style.display = "none";
-      if (payload && payload.url && netflixIframe) {
-        if (netflixIframe.src !== payload.url) {
-          netflixIframe.src = payload.url;
-        }
+      const openTabBtn = $("#btnNetflixOpenTab");
+      const statusText = $("#netflixStatusText");
+      if (payload && payload.url) {
+        if (openTabBtn) openTabBtn.href = payload.url;
+        if (statusText) statusText.textContent = `▶️ Synced: ${payload.url}`;
+      } else if (statusText) {
+        statusText.textContent = "▶️ Partner started playback";
       }
       if (window.showWaNotification && payload.sender_name) {
         window.showWaNotification(payload.sender_name, "🍿 Started Netflix Watch Party!");
@@ -387,6 +389,8 @@ const App = (() => {
     });
 
     state.socket.on("netflix_pause", (payload) => {
+      const statusText = $("#netflixStatusText");
+      if (statusText) statusText.textContent = "⏸️ Partner paused playback";
       if (window.showWaNotification && payload.sender_name) {
         window.showWaNotification(payload.sender_name, "⏸️ Paused Netflix Watch Party");
       }
@@ -1064,25 +1068,31 @@ const App = (() => {
       }
     });
 
-    $("#btnNetflixLoginToggle")?.addEventListener("click", () => {
-      const authPanel = $("#netflixAuthContainer");
-      if (authPanel) {
-        authPanel.style.display = authPanel.style.display === "none" ? "block" : "none";
-      }
-    });
-
     $("#btnSyncNetflixUrl")?.addEventListener("click", () => {
       const urlInput = $("#netflixUrlInput");
-      const netflixIframe = $("#netflixIframe");
+      const openTabBtn = $("#btnNetflixOpenTab");
+      const statusText = $("#netflixStatusText");
       const url = urlInput ? urlInput.value.trim() : "";
       if (!url) {
         alert("Please enter a valid Netflix watch URL (e.g. https://www.netflix.com/watch/...)");
         return;
       }
-      if (netflixIframe) netflixIframe.src = url;
+      if (openTabBtn) openTabBtn.href = url;
+      if (statusText) statusText.textContent = `🍿 Synced & Ready: ${url}`;
+      window.open(url, "_blank");
       if (state.socket) {
         state.socket.emit("netflix_play", { url: url, position: 0 });
       }
+    });
+
+    $("#btnNetflixPlay")?.addEventListener("click", () => {
+      const urlInput = $("#netflixUrlInput");
+      const url = urlInput ? urlInput.value.trim() : "";
+      if (state.socket) state.socket.emit("netflix_play", { url, position: 0 });
+    });
+
+    $("#btnNetflixPause")?.addEventListener("click", () => {
+      if (state.socket) state.socket.emit("netflix_pause", { position: 0 });
     });
 
     $("#btnTheater")?.addEventListener("click", () => FilmTV.toggleTheater());
