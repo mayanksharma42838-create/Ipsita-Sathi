@@ -362,6 +362,7 @@
     }
   }
 
+  window.showGameView = showGameView;
   window.CoupleGames = {
     init: initGames,
     showGameView: showGameView,

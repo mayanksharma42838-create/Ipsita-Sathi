@@ -94,27 +94,42 @@ const DoodleBoard = (() => {
   }
 
   function loadImage(blob) {
-    if (!canvas || !ctx || !(blob instanceof Blob)) return Promise.resolve(false);
-    const imageUrl = URL.createObjectURL(blob);
-    return new Promise((resolve, reject) => {
-      const image = new Image();
-      image.onload = () => {
-        const ratio = window.devicePixelRatio || 1;
-        ctx.save();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        ctx.restore();
-        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        URL.revokeObjectURL(imageUrl);
-        resolve(true);
-      };
-      image.onerror = () => {
-        URL.revokeObjectURL(imageUrl);
-        reject(new Error("Saved doodle could not be displayed"));
-      };
-      image.src = imageUrl;
-    });
+    if (!canvas || !ctx || !(blob instanceof Blob)) {
+      clear();
+      return Promise.resolve(false);
+    }
+    try {
+      const imageUrl = URL.createObjectURL(blob);
+      return new Promise((resolve) => {
+        const image = new Image();
+        image.onload = () => {
+          try {
+            const ratio = window.devicePixelRatio || 1;
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
+            ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+            URL.revokeObjectURL(imageUrl);
+            resolve(true);
+          } catch (e) {
+            clear();
+            URL.revokeObjectURL(imageUrl);
+            resolve(false);
+          }
+        };
+        image.onerror = () => {
+          clear();
+          URL.revokeObjectURL(imageUrl);
+          resolve(false);
+        };
+        image.src = imageUrl;
+      });
+    } catch (err) {
+      clear();
+      return Promise.resolve(false);
+    }
   }
 
   function setColor(c) {

@@ -621,11 +621,23 @@ const App = (() => {
         credentials: "include",
         headers: headers(false),
       });
-      if (response.status === 404) return;
+      if (response.status === 404) {
+        if (typeof DoodleBoard !== "undefined" && DoodleBoard.clear) DoodleBoard.clear();
+        return;
+      }
       if (!response.ok) throw new Error(`Doodle restore failed (${response.status})`);
-      await DoodleBoard.loadImage(await response.blob());
+      const blob = await response.blob();
+      if (blob && blob.size > 0 && typeof DoodleBoard !== "undefined" && DoodleBoard.loadImage) {
+        const loaded = await DoodleBoard.loadImage(blob);
+        if (!loaded && DoodleBoard.clear) DoodleBoard.clear();
+      } else if (typeof DoodleBoard !== "undefined" && DoodleBoard.clear) {
+        DoodleBoard.clear();
+      }
     } catch (error) {
-      console.warn("Saved room doodle could not be restored:", error);
+      console.warn("Saved room doodle fallback engaged:", error);
+      try {
+        if (typeof DoodleBoard !== "undefined" && DoodleBoard.clear) DoodleBoard.clear();
+      } catch (e) {}
     }
   }
 

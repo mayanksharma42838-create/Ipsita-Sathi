@@ -60,6 +60,10 @@ def create_app(config_class=Config):
     def index():
         return render_template("index.html")
 
+    @app.route("/favicon.ico")
+    def favicon():
+        return "", 204
+
     # --- BULLETPROOF FILM-TV SAFE FALLBACK ROUTES (Only active if blueprint route is bypassed) ---
     @app.route("/api/filmtv/state_fallback", methods=["GET"])
     def fallback_filmtv_state():
