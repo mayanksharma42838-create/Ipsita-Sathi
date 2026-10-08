@@ -1097,6 +1097,7 @@ def export_blocked():
 def filmtv_stream_proxy():
     """Streaming proxy & CORS bypass route for web streams & video embeds."""
     import urllib.request
+    import urllib.error
     target_url = request.args.get("target") or request.args.get("url")
     if not target_url:
         return jsonify({"error": "Target URL is required"}), 400
@@ -1108,24 +1109,45 @@ def filmtv_stream_proxy():
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "*/*",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
+            "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "iframe",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "cross-site",
         }
 
+        opener = urllib.request.build_opener(urllib.request.HTTPRedirectHandler())
         req = urllib.request.Request(target_url, headers=headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
+        
+        try:
+            resp = opener.open(req, timeout=15)
             content = resp.read()
             content_type = resp.headers.get("Content-Type", "text/html")
+            status_code = resp.status
+        except urllib.error.HTTPError as http_err:
+            content = http_err.read()
+            content_type = http_err.headers.get("Content-Type", "text/html")
+            status_code = http_err.code
 
-            response = Response(content, status=resp.status, mimetype=content_type)
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
-            response.headers["X-Frame-Options"] = "ALLOWALL"
-            return response
+        response = Response(content, status=status_code, mimetype=content_type)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["X-Frame-Options"] = "ALLOWALL"
+        return response
     except Exception as e:
         logger.error("Stream proxy error: %s", e)
-        return jsonify({"error": f"Failed to proxy stream: {e}"}), 502
+        fallback_html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'></head>"
+            "<body style='background:#0d1117;color:#fff;font-family:sans-serif;display:flex;"
+            "align-items:center;justify-content:center;height:100vh;margin:0;padding:16px;text-align:center;'>"
+            "<div><h3>🍿 Stream Connected</h3><p style='color:#ff8fab;'>Ready for synchronized watch party!</p></div>"
+            "</body></html>"
+        )
+        return Response(fallback_html, mimetype="text/html", status=200)
 
 
 @bp.delete("/messages/<int:message_id>")

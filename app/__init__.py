@@ -93,7 +93,7 @@ def create_app(config_class=Config):
             "media-src 'self' blob: https:; "
             "connect-src 'self' ws: wss: https://cdn.socket.io https://cdnjs.cloudflare.com; "
             "frame-src 'self' blob: https: https://view.officeapps.live.com; "
-            "frame-ancestors 'none'; "
+            "frame-ancestors 'self'; "
             "base-uri 'self'; "
             "form-action 'self'; "
             "object-src 'none'"
