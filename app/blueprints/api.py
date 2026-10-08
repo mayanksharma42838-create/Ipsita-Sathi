@@ -1098,6 +1098,8 @@ def filmtv_stream_proxy():
     """Streaming proxy & CORS bypass route for web streams & video embeds."""
     import urllib.request
     import urllib.error
+    import re
+
     target_url = request.args.get("target") or request.args.get("url")
     if not target_url:
         return jsonify({"error": "Target URL is required"}), 400
@@ -1106,6 +1108,39 @@ def filmtv_stream_proxy():
         parsed = urlsplit(target_url)
         if parsed.scheme not in ("http", "https"):
             return jsonify({"error": "Only HTTP/HTTPS URLs allowed"}), 400
+
+        # Special handling for Netflix URLs: render interactive cinema card to prevent DRM / X-Frame-Options blank screen
+        if "netflix.com" in target_url.lower():
+            title_match = re.search(r"/watch/(\d+)", target_url)
+            title_id = title_match.group(1) if title_match else "Watch Party"
+            netflix_stage_html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Netflix Watch Party</title>
+    <style>
+        body {{ margin:0; padding:16px; background:#0d1117; color:#fff; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:85vh; text-align:center; box-sizing:border-radius; }}
+        .cinema-card {{ background:rgba(229,9,20,0.12); border:1px solid #e50914; border-radius:16px; padding:20px; width:100%; max-width:440px; box-shadow:0 10px 30px rgba(229,9,20,0.25); box-sizing:border-box; }}
+        .title {{ font-size:1.15rem; font-weight:bold; color:#e50914; margin-bottom:8px; }}
+        .subtitle {{ font-size:0.82rem; color:rgba(255,255,255,0.8); margin-bottom:16px; word-break:break-all; }}
+        .badge {{ display:inline-block; background:#e50914; color:#fff; font-size:0.75rem; font-weight:bold; padding:4px 10px; border-radius:12px; margin-bottom:14px; }}
+        .launch-btn {{ display:inline-block; background:#e50914; color:#fff; font-weight:bold; text-decoration:none; padding:10px 22px; border-radius:10px; font-size:0.95rem; margin-top:8px; box-shadow:0 4px 14px rgba(229,9,20,0.4); }}
+    </style>
+</head>
+<body>
+    <div class="cinema-card">
+        <span class="badge">🍿 IN-APP WATCH PARTY ACTIVE</span>
+        <div class="title">Netflix Title #{title_id}</div>
+        <div class="subtitle">{target_url}</div>
+        <p style="font-size:0.84rem;color:#cbd5e1;line-height:1.4;">
+            Dono partners synchronized hain! Niche room ke Play/Pause buttons click karke synchronized stream enjoy karein.
+        </p>
+        <a href="{target_url}" target="_blank" rel="noopener" class="launch-btn">▶️ Open Netflix Player</a>
+    </div>
+</body>
+</html>"""
+            return Response(netflix_stage_html, mimetype="text/html", status=200)
 
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
