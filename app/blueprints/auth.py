@@ -448,6 +448,7 @@ def me():
         {
             "id": m.id,
             "display_name": m.display_name,
+            "avatar_url": f"/api/profile/avatar/{m.id}",
             "is_online": m.is_online,
         }
         for m in room.members
@@ -455,8 +456,10 @@ def me():
     return jsonify({
         "member_id": g.member.id,
         "display_name": g.member.display_name,
+        "avatar_url": f"/api/profile/avatar/{g.member.id}",
         "phone_number": room.phone_number,
         "room_id": room.room_id,
+        "room_name": room.room_name or room.phone_number or room.room_id,
         "theme_preset": room.theme_preset,
         "theme_url": "/api/theme/background" if room.theme_preset == "custom" else None,
         "theme_opacity": room.theme_opacity,
@@ -489,6 +492,28 @@ def update_display_name():
     return jsonify({"ok": True, "display_name": name})
 
 
+@bp.post("/room/name")
+@login_required
+def update_room_name():
+    from flask import g
+    from app.extensions import socketio
+
+    data = request.get_json(silent=True) or {}
+    raw_name = (data.get("room_name") or "").strip()[:128]
+    if not raw_name:
+        return jsonify({"error": "Room name is required"}), 400
+
+    g.room.room_name = raw_name
+    db.session.commit()
+
+    socketio.emit(
+        "room_updated",
+        {"room_name": raw_name, "by": g.member.display_name},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "room_name": raw_name})
+
+
 @bp.post("/logout")
 @login_required
 def logout():
@@ -514,9 +539,11 @@ def session_check():
             "authenticated": True,
             "member_id": member.id,
             "display_name": member.display_name,
+            "avatar_url": f"/api/profile/avatar/{member.id}",
             "phone_number": member.room.phone_number,
             "email": member.user.email if member.user else None,
             "room_id": member.room.room_id,
+            "room_name": member.room.room_name or member.room.phone_number or member.room.room_id,
             "session_token": member.session_token,
             "salt": base64.b64encode(member.room.salt).decode("utf-8"),
             "theme_preset": member.room.theme_preset,

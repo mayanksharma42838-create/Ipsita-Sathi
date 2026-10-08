@@ -19,6 +19,7 @@ class User(db.Model):
     phone_number = db.Column(db.String(20), unique=True, nullable=True, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     display_name = db.Column(db.String(64), nullable=False, default="Partner")
+    avatar_path = db.Column(db.String(512), nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     session_token = db.Column(db.String(128), unique=True, nullable=True, index=True)
 
@@ -34,6 +35,7 @@ class Room(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     room_id = db.Column(db.String(64), unique=True, nullable=False, index=True)
+    room_name = db.Column(db.String(128), nullable=True)
     phone_number = db.Column(db.String(256), unique=True, nullable=True, index=True)
     password_hash = db.Column(db.String(256), nullable=False)
     salt = db.Column(db.LargeBinary(16), nullable=False)
@@ -94,6 +96,7 @@ class Member(db.Model):
     room_pk = db.Column(db.Integer, db.ForeignKey("rooms.id"), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     display_name = db.Column(db.String(64), nullable=False, default="Partner")
+    avatar_path = db.Column(db.String(512), nullable=True)
     session_token = db.Column(db.String(128), unique=True, nullable=True, index=True)
     joined_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     last_seen = db.Column(db.DateTime, default=utcnow, nullable=False)

@@ -203,7 +203,8 @@ def list_messages():
             {
                 "id": m.id,
                 "sender_id": m.sender_id,
-                "sender_name": m.sender.display_name if m.sender else "Unknown",
+                "sender_name": m.sender.display_name if m.sender else "Partner",
+                "sender_avatar_url": f"/api/profile/avatar/{m.sender_id}",
                 "ciphertext": m.ciphertext,
                 "msg_type": m.msg_type,
                 "media_url": f"/api/media/{m.id}" if m.media_path else None,
@@ -251,6 +252,7 @@ def post_message():
         "id": msg.id,
         "sender_id": g.member.id,
         "sender_name": g.member.display_name,
+        "sender_avatar_url": f"/api/profile/avatar/{g.member.id}",
         "ciphertext": msg.ciphertext,
         "msg_type": msg.msg_type,
         "media_url": None,
@@ -534,6 +536,72 @@ def theme_background():
         b"\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
     )
     return Response(fallback_png, mimetype="image/png", status=200)
+
+
+@bp.post("/profile/avatar")
+@login_required
+def upload_avatar():
+    if "file" not in request.files:
+        return jsonify({"error": "file field required"}), 400
+    f = request.files["file"]
+    if not f or not f.filename:
+        return jsonify({"error": "empty file"}), 400
+
+    header = read_upload_header(f)
+    ext = sniff_image_ext(header)
+    if not ext:
+        return jsonify({"error": "Invalid image format (PNG, JPG, WEBP, GIF required)"}), 400
+
+    avatars_dir = Path(current_app.config["MEDIA_DIR"]) / "avatars"
+    avatars_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"avatar_member_{g.member.id}_{uuid.uuid4().hex}{ext}"
+    dest = avatars_dir / filename
+    f.save(dest)
+
+    if g.member.avatar_path:
+        try:
+            Path(g.member.avatar_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    g.member.avatar_path = str(dest)
+    if g.member.user:
+        g.member.user.avatar_path = str(dest)
+
+    db.session.commit()
+
+    avatar_url = f"/api/profile/avatar/{g.member.id}"
+    socketio.emit(
+        "avatar_updated",
+        {"member_id": g.member.id, "display_name": g.member.display_name, "avatar_url": avatar_url},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "avatar_url": avatar_url})
+
+
+@bp.get("/profile/avatar")
+@bp.get("/profile/avatar/<int:member_id>")
+def get_avatar(member_id: int | None = None):
+    target_member = None
+    if member_id is not None:
+        target_member = Member.query.get(member_id)
+    else:
+        target_member = get_member_from_request()
+
+    if target_member and target_member.avatar_path and os.path.isfile(target_member.avatar_path):
+        try:
+            return send_file(target_member.avatar_path)
+        except Exception:
+            pass
+
+    default_avatar_svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">'
+        '<rect width="128" height="128" fill="#121826"/>'
+        '<circle cx="64" cy="48" r="28" fill="#ff8fab"/>'
+        '<path d="M20,112 C20,88 40,76 64,76 C88,76 108,88 108,112 Z" fill="#ff8fab"/>'
+        '</svg>'
+    )
+    return Response(default_avatar_svg, mimetype="image/svg+xml", status=200)
 
 
 @bp.post("/instagram/session")
