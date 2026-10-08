@@ -1093,6 +1093,41 @@ def export_blocked():
     return jsonify({"error": "Chat history export is permanently disabled for privacy."}), 403
 
 
+@bp.route("/filmtv/stream_proxy", methods=["GET"])
+def filmtv_stream_proxy():
+    """Streaming proxy & CORS bypass route for web streams & video embeds."""
+    import urllib.request
+    target_url = request.args.get("target") or request.args.get("url")
+    if not target_url:
+        return jsonify({"error": "Target URL is required"}), 400
+
+    try:
+        parsed = urlsplit(target_url)
+        if parsed.scheme not in ("http", "https"):
+            return jsonify({"error": "Only HTTP/HTTPS URLs allowed"}), 400
+
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+
+        req = urllib.request.Request(target_url, headers=headers)
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            content = resp.read()
+            content_type = resp.headers.get("Content-Type", "text/html")
+
+            response = Response(content, status=resp.status, mimetype=content_type)
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+            response.headers["X-Frame-Options"] = "ALLOWALL"
+            return response
+    except Exception as e:
+        logger.error("Stream proxy error: %s", e)
+        return jsonify({"error": f"Failed to proxy stream: {e}"}), 502
+
+
 @bp.delete("/messages/<int:message_id>")
 @login_required
 def delete_message(message_id: int):
