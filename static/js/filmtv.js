@@ -26,6 +26,19 @@ const FilmTV = (() => {
     return typeof PdfDocumentViewer === "undefined" ? null : PdfDocumentViewer;
   }
 
+  function resolveAbsoluteUrl(rawSource) {
+    if (!rawSource) return "";
+    let clean = String(rawSource).trim().replace(/^[\.\s]+/, "");
+    if (clean.startsWith("http://") || clean.startsWith("https://")) {
+      return clean;
+    }
+    try {
+      return new URL(clean, window.location.origin).href;
+    } catch {
+      return clean;
+    }
+  }
+
   function init({ container, socket: sock, tokenFn }) {
     console.log("🟢 [FilmTV] Initializing ultra-advanced module...");
     containerEl = container;
@@ -339,10 +352,7 @@ const FilmTV = (() => {
       if (iframeContainer) iframeContainer.style.display = "none";
 
       videoEl.style.display = "block";
-      const src = new URL(
-        isVideoUpload ? (state.stream_url || "/api/filmtv/stream") : rawUrl,
-        window.location.origin
-      ).href;
+      const src = resolveAbsoluteUrl(isVideoUpload ? (state.stream_url || "/api/filmtv/stream") : rawUrl);
       if (currentVideoSource !== state.source || videoEl.src !== src) {
         currentVideoSource = state.source;
         videoEl.src = src;
@@ -416,7 +426,7 @@ const FilmTV = (() => {
 
       if (state.source_type === "upload") {
         const extension = sourceStr.split("?")[0].split("#")[0].split(".").pop();
-        const streamUrl = new URL(state.stream_url || "/api/filmtv/stream", window.location.origin).href;
+        const streamUrl = resolveAbsoluteUrl(state.stream_url || "/api/filmtv/stream");
         if (extension === "pdf") {
           displaySource = streamUrl;
         } else if (["doc", "docx", "xls", "xlsx", "ppt", "pptx"].includes(extension)) {
@@ -427,7 +437,7 @@ const FilmTV = (() => {
         }
       }
 
-      const absoluteSource = new URL(displaySource, window.location.origin).href;
+      const absoluteSource = resolveAbsoluteUrl(displaySource);
       if (iframeEl.src !== absoluteSource) iframeEl.src = absoluteSource;
     }
 
