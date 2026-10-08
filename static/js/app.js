@@ -75,13 +75,13 @@ const App = (() => {
           body: text || "New message received",
           icon: "/favicon.ico",
         });
-      } catch (e) {}
+      } catch (e) { }
     }
   }
 
   function leaveRoom() {
     localStorage.removeItem("sathi_user_session");
-    logout().catch(() => {});
+    logout().catch(() => { });
     window.location.href = "/";
   }
 
@@ -1151,7 +1151,7 @@ const App = (() => {
       return;
     }
 
-    frame.setAttribute("sandbox", "allow-scripts allow-popups allow-forms");
+    frame.setAttribute("sandbox", "allow-scripts allow-forms");
     frame.src = embed;
     ph.style.display = "none";
   }
@@ -1283,7 +1283,7 @@ const App = (() => {
           iframe = document.createElement("iframe");
           iframe.className = "filmtv-iframe";
           iframe.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-          iframe.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-modals allow-presentation");
+          iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads allow-modals allow-presentation");
           iframe.style.cssText = "width:100%;height:100%;border:none;";
           iframeContainer.appendChild(iframe);
         }
@@ -1597,7 +1597,7 @@ const App = (() => {
     });
 
     if ("Notification" in window && Notification.permission !== "granted") {
-      try { Notification.requestPermission(); } catch (e) {}
+      try { Notification.requestPermission(); } catch (e) { }
     }
 
     const savedSession = JSON.parse(localStorage.getItem("sathi_user_session") || "null");
