@@ -347,8 +347,13 @@ def upload_media():
 
 
 @bp.get("/media/<int:message_id>")
-@login_required
 def get_media(message_id: int):
+    member = get_member_from_request(allow_query_token=True)
+    if not member:
+        return jsonify({"error": "Unauthorized"}), 401
+    g.member = member
+    g.room = member.room
+
     msg = Message.query.filter_by(id=message_id, room_pk=g.room.id, deleted=False).first()
     if not msg or not msg.media_path or msg.is_expired():
         return jsonify({"error": "not found"}), 404

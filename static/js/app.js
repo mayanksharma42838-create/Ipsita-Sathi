@@ -852,7 +852,8 @@ const App = (() => {
   }
 
   async function fetchDecryptedMedia(m) {
-    const res = await fetch(m.media_url, { headers: headers(false) });
+    const url = m.media_url.includes("?") ? `${m.media_url}&token=${encodeURIComponent(state.token || "")}` : `${m.media_url}?token=${encodeURIComponent(state.token || "")}`;
+    const res = await fetch(url, { headers: headers(false), credentials: "include" });
     if (!res.ok) return null;
     const buf = new Uint8Array(await res.arrayBuffer());
     let blob;
@@ -870,7 +871,8 @@ const App = (() => {
   }
 
   async function fetchDecryptedAudio(m) {
-    const res = await fetch(m.media_url, { headers: headers(false) });
+    const url = m.media_url.includes("?") ? `${m.media_url}&token=${encodeURIComponent(state.token || "")}` : `${m.media_url}?token=${encodeURIComponent(state.token || "")}`;
+    const res = await fetch(url, { headers: headers(false), credentials: "include" });
     if (!res.ok) return null;
     const buf = new Uint8Array(await res.arrayBuffer());
     let blob;
