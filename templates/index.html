@@ -76,10 +76,19 @@
       <p class="tagline">Your private room, ready whenever you return.</p>
       <div class="panel">
         <form id="loginForm" novalidate>
-          <label for="phoneNumber">Phone number or Gmail / Email</label>
-          <input type="text" id="phoneNumber" autocomplete="username" required
-            placeholder="Phone (+1 555...) or Email (you@gmail.com)" />
-          <label for="roomPassword">Shared room password</label>
+          <label for="phoneNumber">Contact (Phone Number)</label>
+          <input type="text" id="phoneNumber" autocomplete="tel"
+            placeholder="Phone number (+1 555...)" />
+
+          <label for="emailAddress">Gmail / Email Address</label>
+          <input type="email" id="emailAddress" autocomplete="email"
+            placeholder="Email (you@gmail.com)" />
+
+          <label for="roomName">Room Name / ID (Optional)</label>
+          <input type="text" id="roomName" autocomplete="off"
+            placeholder="Enter Room Name / Code" />
+
+          <label for="roomPassword">Shared Room Password</label>
           <input type="password" id="roomPassword" autocomplete="current-password" required
             placeholder="Enter your private room password" />
 

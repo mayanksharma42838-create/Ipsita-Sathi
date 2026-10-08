@@ -63,15 +63,45 @@ const App = (() => {
     return String(value || "").trim().replace(/[\s().-]/g, "").replace(/^\+/, "");
   }
 
+  function handleLogin(contact, email, room, password) {
+    const userData = { contact, email, room, password, isLoggedIn: true };
+    localStorage.setItem("sathi_user_session", JSON.stringify(userData));
+  }
+
+  function triggerMessageNotification(sender, text) {
+    if ("Notification" in window && Notification.permission === "granted") {
+      try {
+        new Notification(`Message from ${sender || "Partner"}`, {
+          body: text || "New message received",
+          icon: "/favicon.ico",
+        });
+      } catch (e) {}
+    }
+  }
+
+  function leaveRoom() {
+    localStorage.removeItem("sathi_user_session");
+    logout().catch(() => {});
+    window.location.href = "/";
+  }
+
+  window.handleLogin = handleLogin;
+  window.triggerMessageNotification = triggerMessageNotification;
+  window.leaveRoom = leaveRoom;
+
   async function loginRoom(event) {
     event?.preventDefault();
     showAuthError("");
     const phoneNumber = $("#phoneNumber")?.value.trim() || "";
+    const emailAddress = $("#emailAddress")?.value.trim() || "";
+    const roomName = $("#roomName")?.value.trim() || "";
     const password = $("#roomPassword")?.value || "";
     const legacyRoomId = $("#legacyRoomId")?.value.trim();
     const saved = OfflineStore.getSession();
     const loginButton = $("#btnLogin");
     if (loginButton) loginButton.disabled = true;
+
+    const identifier = phoneNumber || emailAddress || roomName;
 
     try {
       const response = await fetch("/api/auth/login", {
@@ -79,9 +109,10 @@ const App = (() => {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          phone_number: phoneNumber,
+          identifier: identifier,
+          phone_number: phoneNumber || emailAddress,
           password,
-          legacy_room_id: legacyRoomId || undefined,
+          legacy_room_id: legacyRoomId || roomName || undefined,
           resume_token:
             saved?.token && normalizePhoneNumber(saved.phoneNumber) === normalizePhoneNumber(phoneNumber)
               ? saved.token
@@ -90,7 +121,9 @@ const App = (() => {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || `Login failed (${response.status})`);
-      await enterRoom(data, password, data.phone_number || phoneNumber);
+
+      handleLogin(phoneNumber, emailAddress, data.room_id || roomName, password);
+      await enterRoom(data, password, data.phone_number || phoneNumber || emailAddress);
     } catch (e) {
       showAuthError(e.message);
     } finally {
@@ -1285,6 +1318,27 @@ const App = (() => {
         sendMessage(cipher).catch((e) => alert(e.message));
       }
     };
+
+    if ("Notification" in window && Notification.permission !== "granted") {
+      try { Notification.requestPermission(); } catch (e) {}
+    }
+
+    const savedSession = JSON.parse(localStorage.getItem("sathi_user_session") || "null");
+    if (savedSession && savedSession.isLoggedIn) {
+      if ($("#phoneNumber") && savedSession.contact) $("#phoneNumber").value = savedSession.contact;
+      if ($("#emailAddress") && savedSession.email) $("#emailAddress").value = savedSession.email;
+      if ($("#roomName") && savedSession.room) $("#roomName").value = savedSession.room;
+      if ($("#roomPassword") && savedSession.password) $("#roomPassword").value = savedSession.password;
+    }
+
+    const widget = document.getElementById("floating-widget") || document.querySelector(".floating-window") || document.getElementById("floatingWidgetOverlay");
+    if (widget) {
+      widget.style.display = "block";
+      widget.onclick = (e) => {
+        if (e.target && e.target.closest && e.target.closest("input, button, canvas")) return;
+        widget.classList.toggle("expanded");
+      };
+    }
 
     PrivacyGuard.init();
     bindUI();
