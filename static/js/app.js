@@ -822,6 +822,21 @@ const App = (() => {
     }
 
     $("#messages")?.appendChild(div);
+
+    // Also append to Fullscreen Mini Chat Overlay
+    const fsChatBox = $("#fullscreenChatMessages");
+    if (fsChatBox && plain) {
+      const fsDiv = document.createElement("div");
+      fsDiv.className = `fullscreen-chat-msg ${isMe ? "me" : "them"}`;
+      fsDiv.textContent = `${isMe ? "Me" : (m.sender_name || "Partner")}: ${plain}`;
+      fsChatBox.appendChild(fsDiv);
+      fsChatBox.scrollTop = fsChatBox.scrollHeight;
+
+      if (!isMe && $("#fullscreenChatOverlay")?.classList.contains("hidden")) {
+        $("#fullscreenChatOverlay")?.classList.remove("hidden");
+      }
+    }
+
     if (scroll) scrollMessages();
   }
 
@@ -1221,6 +1236,36 @@ const App = (() => {
     $("#btnVoice")?.addEventListener("click", () =>
       toggleVoice().catch((e) => alert(e.message || "Mic permission needed"))
     );
+
+    $("#btnToggleFloatingChat")?.addEventListener("click", () => {
+      const overlay = $("#fullscreenChatOverlay");
+      if (overlay) overlay.classList.toggle("hidden");
+    });
+
+    $("#btnCloseFullscreenChat")?.addEventListener("click", () => {
+      $("#fullscreenChatOverlay")?.classList.add("hidden");
+    });
+
+    const sendFsChat = async () => {
+      const input = $("#fullscreenChatInput");
+      const text = input ? input.value.trim() : "";
+      if (!text || !state.key) return;
+      input.value = "";
+      const cipher = await CryptoClient.encryptText(state.key, text);
+      await sendMessage(cipher);
+    };
+
+    $("#btnSendFullscreenChat")?.addEventListener("click", sendFsChat);
+    $("#fullscreenChatInput")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        sendFsChat();
+      }
+    });
+
+    $("#btnNetflixFullscreen")?.addEventListener("click", () => {
+      FilmTV.toggleFullscreen().catch((e) => setFilmTVError(e.message));
+    });
 
     $("#btnEnableNotifications")?.addEventListener("click", () => {
       requestNotificationPermissions(false);

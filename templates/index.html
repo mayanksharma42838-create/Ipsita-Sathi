@@ -145,8 +145,8 @@
               <button type="button" class="btn ghost sm" id="btnNetflixParty" title="Netflix Watch Party">🍿 Netflix</button>
               <button type="button" class="btn ghost sm" id="btnTheater" title="Theater mode">Theater</button>
               <button type="button" class="btn ghost sm" id="btnFilmTVMessages" aria-pressed="false">Messages</button>
-              <button type="button" class="btn ghost sm" id="btnFilmTVFullscreen" aria-pressed="false">Full
-                screen</button>
+              <button type="button" class="btn ghost sm" id="btnToggleFloatingChat" title="Toggle Mini Floating Chat">💬 Overlay Chat</button>
+              <button type="button" class="btn sm" id="btnFilmTVFullscreen" aria-pressed="false" style="background:var(--accent, #ff8fab);color:#121826;font-weight:bold;">⛶ Fullscreen</button>
               <button type="button" class="btn ghost sm" id="btnFilmTVClose" title="Close FilmTV">Close</button>
             </div>
           </header>
@@ -162,8 +162,9 @@
 
             <!-- Netflix Watch Party Container -->
             <div id="netflixContainer" class="netflix-container" style="display:none;width:100%;height:100%;position:relative;background:#0d1117;padding:12px;box-sizing:border-radius:12px;border:1px solid #e50914;">
-              <div class="netflix-controls-bar" style="margin-bottom:8px;">
+              <div class="netflix-controls-bar" style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
                 <span class="netflix-brand">🍿 Netflix In-App Watch Party</span>
+                <button type="button" class="btn sm" id="btnNetflixFullscreen" style="background:#e50914;color:#fff;font-weight:bold;">⛶ Fullscreen</button>
               </div>
 
               <div class="netflix-sync-card" style="background:rgba(229,9,20,0.08);border:1px solid rgba(229,9,20,0.3);padding:10px;border-radius:10px;">
@@ -182,6 +183,19 @@
                 <button type="button" class="btn sm ghost" id="btnNetflixPlay">▶️ Play Sync</button>
                 <button type="button" class="btn sm ghost" id="btnNetflixPause">⏸️ Pause Sync</button>
                 <span id="netflixStatusText" style="font-size:0.85rem;color:var(--muted);">Ready for in-app co-watching</span>
+              </div>
+            </div>
+
+            <!-- Floating Fullscreen Mini Chat Overlay -->
+            <div id="fullscreenChatOverlay" class="fullscreen-chat-overlay hidden">
+              <div class="fullscreen-chat-header">
+                <span>💬 Mini Chat Overlay</span>
+                <button type="button" id="btnCloseFullscreenChat" class="btn sm ghost">✕</button>
+              </div>
+              <div id="fullscreenChatMessages" class="fullscreen-chat-messages"></div>
+              <div class="fullscreen-chat-input-row">
+                <input type="text" id="fullscreenChatInput" placeholder="Quick message..." />
+                <button type="button" id="btnSendFullscreenChat" class="btn sm">Send</button>
               </div>
             </div>
             <section id="filmtvDocumentViewer" class="filmtv-document-viewer" aria-label="Shared PDF document" hidden>
