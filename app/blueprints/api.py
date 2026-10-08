@@ -1091,3 +1091,30 @@ def list_gallery():
 @login_required
 def export_blocked():
     return jsonify({"error": "Chat history export is permanently disabled for privacy."}), 403
+
+
+@bp.delete("/messages/<int:message_id>")
+@login_required
+def delete_message(message_id: int):
+    msg = Message.query.filter_by(id=message_id, room_pk=g.room.id, deleted=False).first()
+    if not msg:
+        return jsonify({"error": "Message not found"}), 404
+    if msg.sender_id != g.member.id:
+        return jsonify({"error": "You can only delete your own messages"}), 403
+
+    msg.deleted = True
+    if msg.media_path:
+        try:
+            Path(msg.media_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+        msg.media_path = None
+
+    db.session.commit()
+
+    socketio.emit(
+        "messages_expired",
+        {"ids": [msg.id]},
+        room=f"room:{g.room.room_id}",
+    )
+    return jsonify({"ok": True, "id": msg.id})

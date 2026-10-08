@@ -109,24 +109,26 @@
     </div>
 
     <div id="chatView">
-      <div class="topbar">
-        <div>
-          <h2 id="roomLabel">Room</h2>
-          <div class="presence">
-            <span class="dot" id="presenceDot"></span>
-            <span id="presenceText">connecting…</span>
-            · <span id="meLabel"></span>
+      <div class="topbar wa-topbar">
+        <div class="wa-header-user">
+          <img id="partnerAvatarHeader" src="/api/profile/avatar" alt="DP" class="wa-avatar-header" />
+          <div class="wa-header-info">
+            <h2 id="roomLabel" class="wa-room-title">Private Room</h2>
+            <div class="presence wa-presence">
+              <span class="dot" id="presenceDot"></span>
+              <span id="presenceText">connecting…</span>
+              · <span id="meLabel"></span>
+            </div>
           </div>
         </div>
-        <div class="toolbar">
-          <button type="button" class="btn ghost" id="btnGames" title="Couple Games">🎮 Games</button>
-          <button type="button" class="btn ghost" id="btnGallery" title="Room Gallery">Vault</button>
-          <button type="button" class="btn ghost" id="btnFilmTV" title="FilmTV Watch Party">FilmTV</button>
-          <button type="button" class="btn ghost" id="btnTheme">Theme</button>
-          <button type="button" class="btn ghost" id="btnDoodle">Doodle</button>
-          <button type="button" class="btn ghost" id="btnIg">IG Sync</button>
-          <button type="button" class="btn ghost" id="btnSettings">You</button>
-          <button type="button" class="btn ghost" id="btnLogoutTop" title="Revoke session">Leave</button>
+        <div class="toolbar wa-toolbar">
+          <button type="button" class="btn ghost icon-btn" id="btnGames" title="Couple Games">🎮</button>
+          <button type="button" class="btn ghost icon-btn" id="btnGallery" title="Room Vault">🖼️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnFilmTV" title="FilmTV Watch Party">🎬</button>
+          <button type="button" class="btn ghost icon-btn" id="btnTheme" title="Theme">🎨</button>
+          <button type="button" class="btn ghost icon-btn" id="btnDoodle" title="Doodle">✏️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnSettings" title="Room & Profile Settings">⚙️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnLogoutTop" title="Leave Room">🚪</button>
         </div>
       </div>
 
@@ -244,27 +246,55 @@
         <div id="appMain">
           <div id="messages" aria-live="polite"></div>
           <div class="typing" id="typing"></div>
-          <div class="ttl-row">
-            <label for="ttlSelect">Disappear after</label>
-            <select id="ttlSelect">
-              <option value="0">Off</option>
-              <option value="30">30 seconds</option>
-              <option value="60">1 minute</option>
-              <option value="300">5 minutes</option>
-              <option value="3600">1 hour</option>
-              <option value="86400">24 hours</option>
-            </select>
+
+          <!-- WhatsApp Quoted Reply Preview Bar -->
+          <div id="quotedReplyBar" class="wa-quoted-reply-bar hidden">
+            <div class="wa-quoted-border"></div>
+            <div class="wa-quoted-content">
+              <strong id="quotedReplySender">Replying to Partner</strong>
+              <p id="quotedReplyText">Quoted message snippet...</p>
+            </div>
+            <button type="button" id="btnCancelQuotedReply" class="btn sm ghost">✕</button>
           </div>
-          <div class="composer">
-            <div class="composer-actions">
-              <label class="btn icon ghost" title="Photo" style="cursor:pointer;">
-                📷
+
+          <!-- WhatsApp Emoji & Reaction Popover -->
+          <div id="emojiPickerPopover" class="wa-emoji-popover hidden">
+            <div class="wa-emoji-grid">
+              <span class="emoji-opt">❤️</span>
+              <span class="emoji-opt">👍</span>
+              <span class="emoji-opt">😂</span>
+              <span class="emoji-opt">😮</span>
+              <span class="emoji-opt">😢</span>
+              <span class="emoji-opt">🙏</span>
+              <span class="emoji-opt">🔥</span>
+              <span class="emoji-opt">🎉</span>
+              <span class="emoji-opt">😍</span>
+              <span class="emoji-opt">👏</span>
+            </div>
+          </div>
+
+          <!-- WhatsApp Cloned Single-Row Input Bar -->
+          <div class="composer wa-composer">
+            <div class="wa-composer-left">
+              <button type="button" class="btn icon ghost" id="btnEmojiToggle" title="Emoji / Reaction">😊</button>
+              <label class="btn icon ghost" title="Attach Photo / Document" style="cursor:pointer;margin:0;">
+                📎
                 <input type="file" id="photoInput" accept="image/*" hidden />
               </label>
-              <button type="button" class="btn icon ghost" id="btnVoice" title="Voice note">🎙</button>
             </div>
-            <textarea id="composerInput" rows="1" placeholder="Write something private…" maxlength="4000"></textarea>
-            <button type="button" class="btn icon" id="btnSend" title="Send">➤</button>
+
+            <textarea id="composerInput" rows="1" placeholder="Type a message..." maxlength="4000"></textarea>
+
+            <div class="wa-composer-right">
+              <select id="ttlSelect" title="Disappearing Timer" class="wa-ttl-select">
+                <option value="0">⏱ Off</option>
+                <option value="300">⏱ 5 min</option>
+                <option value="3600">⏱ 1 hr</option>
+                <option value="86400">⏱ 24 hrs</option>
+              </select>
+              <button type="button" class="btn icon ghost" id="btnVoice" title="Hold to record voice note">🎤</button>
+              <button type="button" class="btn icon" id="btnSend" title="Send">➤</button>
+            </div>
           </div>
         </div>
       </div>
@@ -274,9 +304,25 @@
   <!-- Settings -->
   <div class="overlay" id="settingsModal">
     <div class="modal">
-      <h3>Display name & Preferences</h3>
-      <label>How you appear in this room</label>
+      <h3>Profile DP & Room Settings</h3>
+
+      <div class="settings-dp-section" style="display:flex;align-items:center;gap:16px;margin:14px 0;">
+        <img id="settingsAvatarPreview" src="/api/profile/avatar" alt="DP Preview" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--accent, #ff8fab);" />
+        <div>
+          <label for="avatarFileInput" class="btn sm ghost" style="cursor:pointer;">📷 Change Profile DP</label>
+          <input type="file" id="avatarFileInput" accept="image/*" style="display:none;" />
+          <p class="hint" style="margin:4px 0 0;font-size:0.75rem;">JPG, PNG or WEBP avatar</p>
+        </div>
+      </div>
+
+      <label>Your Display Name</label>
       <input type="text" id="settingsName" maxlength="64" />
+
+      <label style="margin-top:12px;display:block;">Custom Room Title</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="settingsRoomName" maxlength="128" placeholder="e.g. Ipsita & Sathi's Room" />
+        <button type="button" class="btn sm" id="btnSaveRoomName">Save Title</button>
+      </div>
 
       <label style="margin-top:14px;display:block;">Background Notifications</label>
       <button type="button" class="btn ghost sm block" id="btnEnableNotifications" style="text-align:left;margin-top:4px;">
@@ -289,7 +335,7 @@
       </label>
 
       <div class="modal-actions" style="margin-top:16px;">
-        <button type="button" class="btn" id="btnSaveName">Save</button>
+        <button type="button" class="btn" id="btnSaveName">Save Name</button>
         <button type="button" class="btn ghost" id="btnLogout" title="Revoke this device session">Log out</button>
         <button type="button" class="btn ghost" data-close="settingsModal">Close</button>
       </div>

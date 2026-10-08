@@ -498,6 +498,41 @@ const App = (() => {
         window.showWaNotification(payload.sender_name, `⏩ Seeked Netflix Watch Party to ${payload.position}s`);
       }
     });
+
+    state.socket.on("avatar_updated", (data) => {
+      if (data && data.avatar_url) {
+        const headerAvatar = $("#partnerAvatarHeader");
+        if (headerAvatar) headerAvatar.src = `${data.avatar_url}?v=${Date.now()}`;
+      }
+    });
+
+    state.socket.on("room_updated", (data) => {
+      if (data && data.room_name && $("#roomLabel")) {
+        $("#roomLabel").textContent = data.room_name;
+      }
+    });
+
+    state.socket.on("message_reaction", (data) => {
+      if (data && data.msg_id && data.reaction) {
+        const msgEl = document.querySelector(`[data-msg-id="${data.msg_id}"]`);
+        if (msgEl) {
+          let badge = msgEl.querySelector(".msg-reaction-badge");
+          if (!badge) {
+            badge = document.createElement("div");
+            badge.className = "msg-reaction-badge";
+            msgEl.appendChild(badge);
+          }
+          badge.textContent = data.reaction;
+        }
+      }
+    });
+
+    state.socket.on("read_receipt", (data) => {
+      document.querySelectorAll(".msg.me .msg-ticks").forEach((t) => {
+        t.className = "msg-ticks read";
+        t.textContent = "✓✓";
+      });
+    });
     state.socket.on("messages_expired", ({ ids }) => {
       ids.forEach((id) => {
         const el = document.querySelector(`[data-msg-id="${id}"]`);
@@ -690,19 +725,49 @@ const App = (() => {
     }
   }
 
+  let currentQuotedReply = null;
+
+  function setQuotedReply(sender, snippet) {
+    currentQuotedReply = { sender, snippet };
+    const bar = $("#quotedReplyBar");
+    const senderEl = $("#quotedReplySender");
+    const textEl = $("#quotedReplyText");
+    if (bar && senderEl && textEl) {
+      senderEl.textContent = `Replying to ${sender}`;
+      textEl.textContent = snippet;
+      bar.classList.remove("hidden");
+    }
+  }
+
+  function clearQuotedReply() {
+    currentQuotedReply = null;
+    const bar = $("#quotedReplyBar");
+    if (bar) bar.classList.add("hidden");
+  }
+
   async function renderMessage(m, scroll = true) {
     if (document.querySelector(`[data-msg-id="${m.id}"]`)) return;
+    const isMe = m.sender_id === state.memberId;
     const div = document.createElement("div");
-    div.className = `msg ${m.sender_id === state.memberId ? "me" : "them"}`;
+    div.className = `msg ${isMe ? "me" : "them"}`;
     div.dataset.msgId = m.id;
 
-    const meta = document.createElement("div");
-    meta.className = "meta";
-    meta.textContent = m.sender_name || "Partner";
-    div.appendChild(meta);
+    const msgHeader = document.createElement("div");
+    msgHeader.className = "msg-header";
+    const avatarImg = document.createElement("img");
+    avatarImg.className = "msg-avatar";
+    avatarImg.src = m.sender_avatar_url || `/api/profile/avatar/${m.sender_id}`;
+    avatarImg.alt = "DP";
+    const senderSpan = document.createElement("span");
+    senderSpan.className = "msg-sender";
+    senderSpan.textContent = m.sender_name || "Partner";
+    msgHeader.appendChild(avatarImg);
+    msgHeader.appendChild(senderSpan);
+    div.appendChild(msgHeader);
 
     const plain = state.key ? await CryptoClient.decryptText(state.key, m.ciphertext) : null;
     const body = document.createElement("div");
+    body.className = "msg-body";
     body.textContent = plain || "[encrypted]";
     div.appendChild(body);
 
@@ -718,6 +783,26 @@ const App = (() => {
         if (audio) div.appendChild(audio);
       } catch { /* skip */ }
     }
+
+    const footer = document.createElement("div");
+    footer.className = "msg-footer";
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "msg-time";
+    timeSpan.textContent = new Date(m.created_at || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    footer.appendChild(timeSpan);
+
+    if (isMe) {
+      const ticksSpan = document.createElement("span");
+      ticksSpan.className = "msg-ticks read";
+      ticksSpan.textContent = "✓✓";
+      footer.appendChild(ticksSpan);
+    }
+
+    div.appendChild(footer);
+
+    div.addEventListener("dblclick", () => {
+      setQuotedReply(m.sender_name || "Partner", plain || "Media message");
+    });
 
     if (m.expires_at) {
       const ttl = document.createElement("div");
@@ -786,8 +871,14 @@ const App = (() => {
   async function sendText() {
     const input = $("#composerInput");
     if (!input) return;
-    const text = input.value.trim();
+    let text = input.value.trim();
     if (!text || !state.key) return;
+
+    if (currentQuotedReply) {
+      text = `> [Replying to ${currentQuotedReply.sender}]: "${currentQuotedReply.snippet}"\n\n${text}`;
+      clearQuotedReply();
+    }
+
     input.value = "";
 
     const ciphertext = await CryptoClient.encryptText(state.key, text);
@@ -1124,6 +1215,68 @@ const App = (() => {
 
     $("#btnEnableNotifications")?.addEventListener("click", () => {
       requestNotificationPermissions(false);
+    });
+
+    $("#btnCancelQuotedReply")?.addEventListener("click", clearQuotedReply);
+
+    $("#btnEmojiToggle")?.addEventListener("click", () => {
+      const popover = $("#emojiPickerPopover");
+      if (popover) popover.classList.toggle("hidden");
+    });
+
+    $$(".emoji-opt").forEach((el) => {
+      el.addEventListener("click", () => {
+        const input = $("#composerInput");
+        if (input) {
+          input.value += el.textContent;
+          input.focus();
+        }
+        $("#emojiPickerPopover")?.classList.add("hidden");
+      });
+    });
+
+    $("#avatarFileInput")?.addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/profile/avatar", {
+          method: "POST",
+          headers: { "X-Session-Token": state.token },
+          body: fd,
+        });
+        const data = await res.json();
+        if (data.ok && data.avatar_url) {
+          const preview = $("#settingsAvatarPreview");
+          const headerAvatar = $("#partnerAvatarHeader");
+          if (preview) preview.src = `${data.avatar_url}?v=${Date.now()}`;
+          if (headerAvatar) headerAvatar.src = `${data.avatar_url}?v=${Date.now()}`;
+          alert("Profile picture updated!");
+        } else {
+          alert(data.error || "Failed to upload avatar");
+        }
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+
+    $("#btnSaveRoomName")?.addEventListener("click", async () => {
+      const input = $("#settingsRoomName");
+      const name = input ? input.value.trim() : "";
+      if (!name) return;
+      try {
+        const data = await api("/api/auth/room/name", {
+          method: "POST",
+          body: JSON.stringify({ room_name: name }),
+        });
+        if (data.ok && data.room_name) {
+          if ($("#roomLabel")) $("#roomLabel").textContent = data.room_name;
+          alert("Room title updated!");
+        }
+      } catch (err) {
+        alert(err.message);
+      }
     });
 
     $("#waNotificationBanner")?.addEventListener("click", () => {

@@ -274,3 +274,31 @@ def on_netflix_seek(data):
         "sender_name": member.display_name,
     }
     emit("netflix_seek", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("message_reaction")
+def on_message_reaction(data):
+    """Broadcast WhatsApp-style emoji reaction (❤️, 👍, 😂, 😮, 😢, 🙏) to room."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    msg_id = data.get("msg_id")
+    reaction = data.get("reaction")
+    if not msg_id or not reaction:
+        return
+    payload = {
+        "msg_id": msg_id,
+        "reaction": reaction,
+        "member_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("message_reaction", payload, room=f"room:{member.room.room_id}")
+
+
+@socketio.on("read_receipt")
+def on_read_receipt(data=None):
+    """Broadcast WhatsApp-style double blue read ticks."""
+    member = _member_from_sid()
+    if not member:
+        return
+    emit("read_receipt", {"member_id": member.id, "display_name": member.display_name}, room=f"room:{member.room.room_id}")
