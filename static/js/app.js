@@ -478,11 +478,14 @@ const App = (() => {
       if (netflixContainer) netflixContainer.style.display = "block";
       const empty = $("#filmtvEmpty");
       if (empty) empty.style.display = "none";
-      const openTabBtn = $("#btnNetflixOpenTab");
       const statusText = $("#netflixStatusText");
+      const embeddedFrame = $("#netflixEmbeddedFrame");
       if (payload && payload.url) {
-        if (openTabBtn) openTabBtn.href = payload.url;
-        if (statusText) statusText.textContent = `▶️ Synced: ${payload.url}`;
+        const proxyUrl = `/api/filmtv/stream_proxy?target=${encodeURIComponent(payload.url)}`;
+        if (embeddedFrame && embeddedFrame.src !== proxyUrl) {
+          embeddedFrame.src = proxyUrl;
+        }
+        if (statusText) statusText.textContent = `🍿 Co-Watching in-app: Netflix Watch Party`;
       } else if (statusText) {
         statusText.textContent = "▶️ Partner started playback";
       }
@@ -1328,16 +1331,16 @@ const App = (() => {
 
     $("#btnSyncNetflixUrl")?.addEventListener("click", () => {
       const urlInput = $("#netflixUrlInput");
-      const openTabBtn = $("#btnNetflixOpenTab");
       const statusText = $("#netflixStatusText");
+      const embeddedFrame = $("#netflixEmbeddedFrame");
       const url = urlInput ? urlInput.value.trim() : "";
       if (!url) {
         alert("Please enter a valid Netflix watch URL (e.g. https://www.netflix.com/watch/...)");
         return;
       }
-      if (openTabBtn) openTabBtn.href = url;
-      if (statusText) statusText.textContent = `🍿 Synced & Ready: ${url}`;
-      window.open(url, "_blank");
+      const proxyUrl = `/api/filmtv/stream_proxy?target=${encodeURIComponent(url)}`;
+      if (embeddedFrame) embeddedFrame.src = proxyUrl;
+      if (statusText) statusText.textContent = `🍿 Synced In-App Watch Party`;
       if (state.socket) {
         state.socket.emit("netflix_play", { url: url, position: 0 });
       }

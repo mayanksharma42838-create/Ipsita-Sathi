@@ -161,29 +161,27 @@
             <div id="filmtvIframeContainer" style="width:100%;height:100%;display:none;"></div>
 
             <!-- Netflix Watch Party Container -->
-            <div id="netflixContainer" class="netflix-container" style="display:none;width:100%;height:100%;position:relative;background:#0d1117;padding:16px;box-sizing:border-box;border-radius:12px;border:1px solid #e50914;">
-              <div class="netflix-controls-bar" style="margin-bottom:12px;">
-                <span class="netflix-brand">🍿 Netflix Watch Party Sync Station</span>
+            <div id="netflixContainer" class="netflix-container" style="display:none;width:100%;height:100%;position:relative;background:#0d1117;padding:12px;box-sizing:border-radius:12px;border:1px solid #e50914;">
+              <div class="netflix-controls-bar" style="margin-bottom:8px;">
+                <span class="netflix-brand">🍿 Netflix In-App Watch Party</span>
               </div>
 
-              <div class="netflix-sync-card" style="background:rgba(229,9,20,0.08);border:1px solid rgba(229,9,20,0.3);padding:14px;border-radius:10px;">
-                <label style="color:#e50914;font-weight:bold;margin-bottom:6px;display:block;">Paste Netflix Title or Watch Link</label>
-                <div class="netflix-bar-inputs" style="display:flex;gap:8px;margin-bottom:10px;">
+              <div class="netflix-sync-card" style="background:rgba(229,9,20,0.08);border:1px solid rgba(229,9,20,0.3);padding:10px;border-radius:10px;">
+                <label style="color:#e50914;font-weight:bold;margin-bottom:4px;display:block;">Paste Netflix Title or Watch Link</label>
+                <div class="netflix-bar-inputs" style="display:flex;gap:8px;margin-bottom:6px;">
                   <input type="url" id="netflixUrlInput" placeholder="https://www.netflix.com/watch/80192098" style="flex:1;padding:8px;border-radius:8px;border:1px solid #e50914;background:#121826;color:#fff;" />
-                  <button type="button" class="btn sm" id="btnSyncNetflixUrl" style="background:#e50914;color:#fff;">🚀 Sync & Launch</button>
+                  <button type="button" class="btn sm" id="btnSyncNetflixUrl" style="background:#e50914;color:#fff;">🚀 Sync In-App Party</button>
                 </div>
-                <p class="hint" style="margin:0;color:rgba(255,255,255,0.8);font-size:0.82rem;">
-                  ℹ️ Due to Netflix security policies, direct iframe embeds are restricted. Click <strong>Sync & Launch</strong> to co-watch in synchronized tabs with real-time room play/pause/seek controls!
-                </p>
               </div>
 
-              <div id="netflixPlayerWrap" class="netflix-player-wrap" style="margin-top:14px;padding:12px;background:rgba(0,0,0,0.4);border-radius:10px;display:flex;flex-direction:column;gap:8px;align-items:center;">
-                <div style="display:flex;gap:10px;align-items:center;">
-                  <button type="button" class="btn sm ghost" id="btnNetflixPlay">▶️ Play Sync</button>
-                  <button type="button" class="btn sm ghost" id="btnNetflixPause">⏸️ Pause Sync</button>
-                  <a id="btnNetflixOpenTab" href="https://www.netflix.com" target="_blank" rel="noopener" class="btn sm" style="background:#e50914;color:#fff;text-decoration:none;">🍿 Open Netflix Tab</a>
-                </div>
-                <div id="netflixStatusText" style="font-size:0.85rem;color:var(--muted);">Ready to sync session</div>
+              <div id="netflixPlayerWrap" class="netflix-player-wrap" style="margin-top:10px;width:100%;height:380px;position:relative;background:#000;border-radius:10px;overflow:hidden;">
+                <iframe id="netflixEmbeddedFrame" title="Netflix In-App Stream" style="width:100%;height:100%;border:none;" allow="autoplay; encrypted-media; fullscreen; picture-in-picture; camera; microphone" sandbox="allow-scripts allow-popups allow-forms allow-downloads allow-same-origin allow-modals"></iframe>
+              </div>
+
+              <div class="netflix-control-actions" style="margin-top:8px;display:flex;gap:10px;align-items:center;justify-content:center;">
+                <button type="button" class="btn sm ghost" id="btnNetflixPlay">▶️ Play Sync</button>
+                <button type="button" class="btn sm ghost" id="btnNetflixPause">⏸️ Pause Sync</button>
+                <span id="netflixStatusText" style="font-size:0.85rem;color:var(--muted);">Ready for in-app co-watching</span>
               </div>
             </div>
             <section id="filmtvDocumentViewer" class="filmtv-document-viewer" aria-label="Shared PDF document" hidden>
