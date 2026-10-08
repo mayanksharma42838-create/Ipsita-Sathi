@@ -153,11 +153,27 @@
 
           <div class="filmtv-player-wrap">
             <video id="filmtvVideo" playsinline controls controlslist="nodownload" style="display:none;"></video>
-            <div id="filmtvEmpty" class="filmtv-empty">
-              <span class="heart-mark" aria-hidden="true">♡</span>
-              <p>Share a link to co-browse, watch, or work together.</p>
-              <p class="hint">Supports YouTube, Docs, and web apps via interactive iframe.</p>
+            
+            <div id="filmtvEmpty" class="filmtv-empty" style="flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0;">
+              <div class="inapp-browser-bar" style="width:100%;display:flex;align-items:center;gap:8px;padding:8px;background:rgba(18,24,38,0.95);border-bottom:1px solid var(--border-soft);flex-wrap:wrap;box-sizing:border-box;">
+                <div class="quick-bookmarks" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;">
+                  <button type="button" class="btn sm ghost quick-stream-btn" data-url="https://www.netflix.com/browse" style="border-color:#e50914;color:#e50914;font-weight:bold;">🍿 Netflix</button>
+                  <button type="button" class="btn sm ghost quick-stream-btn" data-url="https://www.youtube.com" style="border-color:#ff0000;color:#ff0000;font-weight:bold;">▶️ YouTube</button>
+                  <button type="button" class="btn sm ghost quick-stream-btn" data-url="https://www.primevideo.com" style="border-color:#00a8e1;color:#00a8e1;font-weight:bold;">📺 Prime</button>
+                  <button type="button" class="btn sm ghost quick-stream-btn" data-url="https://www.hotstar.com" style="border-color:#21a8eb;color:#21a8e1;font-weight:bold;">⭐ Hotstar</button>
+                </div>
+                <div class="inapp-nav-row" style="flex:1;display:flex;gap:6px;min-width:180px;">
+                  <input type="url" id="inappBrowserUrl" placeholder="Navigate or paste stream URL..." style="flex:1;padding:6px 10px;font-size:0.82rem;border-radius:8px;border:1px solid var(--border-soft);background:rgba(0,0,0,0.4);color:#fff;" />
+                  <button type="button" class="btn sm" id="btnInappBrowserGo">GO 🚀</button>
+                </div>
+              </div>
+              <div style="padding:24px;text-align:center;">
+                <span class="heart-mark" aria-hidden="true">♡</span>
+                <p>Select a streaming bookmark above to open your in-app browser & watch party!</p>
+                <p class="hint">Log in to Netflix, YouTube, Prime, or Hotstar inside the app to browse and play together in sync.</p>
+              </div>
             </div>
+
             <div id="filmtvIframeContainer" style="width:100%;height:100%;display:none;"></div>
 
             <!-- Netflix Watch Party Container -->

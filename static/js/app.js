@@ -1267,6 +1267,57 @@ const App = (() => {
       FilmTV.toggleFullscreen().catch((e) => setFilmTVError(e.message));
     });
 
+    function navigateInappBrowser(url) {
+      if (!url) return;
+      FilmTV.openStage();
+      const proxyUrl = `/api/filmtv/stream_proxy?target=${encodeURIComponent(url)}`;
+      const iframeContainer = $("#filmtvIframeContainer");
+      const empty = $("#filmtvEmpty");
+      const videoEl = $("#filmtvVideo");
+      if (videoEl) videoEl.style.display = "none";
+      if (empty) empty.style.display = "none";
+      if (iframeContainer) {
+        iframeContainer.style.display = "block";
+        let iframe = iframeContainer.querySelector("iframe");
+        if (!iframe) {
+          iframe = document.createElement("iframe");
+          iframe.className = "filmtv-iframe";
+          iframe.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
+          iframe.setAttribute("sandbox", "allow-scripts allow-popups allow-forms allow-downloads allow-modals allow-presentation");
+          iframe.style.cssText = "width:100%;height:100%;border:none;";
+          iframeContainer.appendChild(iframe);
+        }
+        iframe.src = proxyUrl;
+      }
+      if (state.socket) {
+        state.socket.emit("netflix_play", { url: url, position: 0 });
+      }
+    }
+
+    $$(".quick-stream-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const url = btn.dataset.url;
+        if (!url) return;
+        const input = $("#inappBrowserUrl");
+        if (input) input.value = url;
+        navigateInappBrowser(url);
+      });
+    });
+
+    $("#btnInappBrowserGo")?.addEventListener("click", () => {
+      const input = $("#inappBrowserUrl");
+      const url = input ? input.value.trim() : "";
+      if (url) navigateInappBrowser(url);
+    });
+
+    $("#inappBrowserUrl")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        const url = e.target.value.trim();
+        if (url) navigateInappBrowser(url);
+      }
+    });
+
     $("#btnEnableNotifications")?.addEventListener("click", () => {
       requestNotificationPermissions(false);
     });
