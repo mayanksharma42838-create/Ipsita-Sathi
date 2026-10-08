@@ -1170,8 +1170,11 @@ def filmtv_stream_proxy():
         response = Response(content, status=status_code, mimetype=content_type)
         response.headers["Access-Control-Allow-Origin"] = "*"
         response.headers["Access-Control-Allow-Credentials"] = "true"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
         response.headers["X-Frame-Options"] = "ALLOWALL"
+        response.headers.pop("Content-Security-Policy", None)
+        response.headers.pop("Content-Security-Policy-Report-Only", None)
+        response.headers.pop("Frame-Options", None)
         return response
     except Exception as e:
         logger.error("Stream proxy error: %s", e)

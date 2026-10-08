@@ -76,6 +76,15 @@ def create_app(config_class=Config):
 
     @app.after_request
     def security_headers(response):
+        if request.path == "/api/filmtv/stream_proxy":
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS, PUT, DELETE"
+            response.headers["X-Frame-Options"] = "ALLOWALL"
+            response.headers.pop("Content-Security-Policy", None)
+            response.headers.pop("Content-Security-Policy-Report-Only", None)
+            return response
+
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
         response.headers["Pragma"] = "no-cache"
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
@@ -84,15 +93,15 @@ def create_app(config_class=Config):
         response.headers["Permissions-Policy"] = "display-capture=(), camera=(), microphone=(self)"
         
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' https://cdn.socket.io https://cdnjs.cloudflare.com https://www.youtube.com https://s.ytimg.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com data:; "
-            "worker-src 'self' blob: https://cdnjs.cloudflare.com; "
-            "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com https://picsum.photos https://*.picsum.photos; "
+            "default-src 'self' blob: data: https: ws: wss:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; "
+            "style-src 'self' 'unsafe-inline' https:; "
+            "font-src 'self' https: data:; "
+            "worker-src 'self' blob: https:; "
+            "img-src 'self' blob: data: https:; "
             "media-src 'self' blob: https:; "
-            "connect-src 'self' ws: wss: https://cdn.socket.io https://cdnjs.cloudflare.com; "
-            "frame-src 'self' blob: https: https://view.officeapps.live.com; "
+            "connect-src 'self' ws: wss: https:; "
+            "frame-src 'self' blob: https:; "
             "frame-ancestors 'self'; "
             "base-uri 'self'; "
             "form-action 'self'; "
