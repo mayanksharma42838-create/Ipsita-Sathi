@@ -438,7 +438,13 @@ const App = (() => {
 
   function connectSocket() {
     if (state.socket) state.socket.disconnect();
-    state.socket = io({ auth: { token: state.token } });
+    state.socket = io({
+      auth: { token: state.token },
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+    });
     window.appSocket = state.socket;
     FilmTV.setSocket(state.socket);
     if (window.CoupleGames && window.CoupleGames.init) {
@@ -1471,6 +1477,25 @@ const App = (() => {
         sendMessage(cipher).catch((e) => alert(e.message));
       }
     };
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/static/sw.js").catch((e) => {
+        console.warn("ServiceWorker registration failed:", e);
+      });
+    }
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") {
+        if (state.socket && !state.socket.connected) {
+          state.socket.connect();
+        }
+        flushOutbox();
+        loadMessages();
+        if (state.socket && state.socket.connected) {
+          state.socket.emit("read_receipt");
+        }
+      }
+    });
 
     if ("Notification" in window && Notification.permission !== "granted") {
       try { Notification.requestPermission(); } catch (e) {}
