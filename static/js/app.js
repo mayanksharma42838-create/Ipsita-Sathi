@@ -1200,6 +1200,111 @@ const App = (() => {
     });
   }
 
+  async function searchInternetArchive(query = "") {
+    const statusEl = $("#archiveSearchStatus");
+    const gridEl = $("#archiveSearchResults");
+    if (!gridEl) return;
+
+    if (statusEl) statusEl.textContent = "🔍 Searching Internet Archive Free Movies...";
+    gridEl.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;padding:20px;">Searching archive.org database...</p>';
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const q = query.trim() || "classic movies";
+      const apiUrl = `https://archive.org/advancedsearch.php?q=mediatype%3Amovies+AND+(${encodeURIComponent(q)})&fl[]=identifier&fl[]=title&fl[]=description&fl[]=year&fl[]=downloads&sort[]=downloads+desc&rows=20&page=1&output=json`;
+
+      const res = await fetch(apiUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error(`Search failed (${res.status})`);
+      const data = await res.json();
+      const docs = data?.response?.docs || [];
+
+      gridEl.innerHTML = "";
+      if (!docs.length) {
+        if (statusEl) statusEl.textContent = "No free movies found for this search query.";
+        gridEl.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;padding:20px;">No movies found. Try searching for "Charlie Chaplin", "Horror", "Sci-Fi", or "Silent".</p>';
+        return;
+      }
+
+      if (statusEl) statusEl.textContent = `Found ${docs.length} free movies for "${q}":`;
+
+      docs.forEach((doc) => {
+        const card = document.createElement("div");
+        card.className = "archive-movie-card";
+
+        const titleDiv = document.createElement("div");
+        titleDiv.className = "archive-movie-title";
+        titleDiv.textContent = doc.title || doc.identifier;
+
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "archive-movie-meta";
+        metaDiv.textContent = `📅 ${doc.year || "Classic"} · ⬇️ ${doc.downloads || 0} downloads`;
+
+        const playBtn = document.createElement("button");
+        playBtn.type = "button";
+        playBtn.className = "btn sm";
+        playBtn.style.cssText = "width:100%;margin-top:6px;background:var(--accent, #ff8fab);color:#121826;font-weight:bold;";
+        playBtn.textContent = "▶️ Stream In-App";
+        playBtn.onclick = () => streamArchiveMovie(doc.identifier, doc.title || doc.identifier);
+
+        card.appendChild(titleDiv);
+        card.appendChild(metaDiv);
+        card.appendChild(playBtn);
+        gridEl.appendChild(card);
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (statusEl) statusEl.textContent = "Unable to connect to Internet Archive right now.";
+      gridEl.innerHTML = `<p class="err" style="grid-column:1/-1;text-align:center;padding:20px;">Network error or timeout searching Archive.org: ${err.message}</p>`;
+    }
+  }
+
+  async function streamArchiveMovie(identifier, title) {
+    const statusEl = $("#archiveSearchStatus");
+    if (statusEl) statusEl.textContent = `⏳ Resolving in-app stream for "${title}"...`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+
+    try {
+      const metaUrl = `https://archive.org/metadata/${encodeURIComponent(identifier)}`;
+      const res = await fetch(metaUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!res.ok) throw new Error("Metadata fetch failed");
+      const data = await res.json();
+      const files = data?.files || [];
+
+      const mp4File =
+        files.find((f) => f.name && f.name.toLowerCase().endsWith(".mp4") && f.format && !f.name.toLowerCase().includes("512kb")) ||
+        files.find((f) => f.name && f.name.toLowerCase().endsWith(".mp4")) ||
+        files.find((f) => f.name && (f.name.toLowerCase().endsWith(".ogv") || f.name.toLowerCase().endsWith(".webm")));
+
+      if (!mp4File || !mp4File.name) {
+        alert("No playable .mp4 stream file found for this item.");
+        if (statusEl) statusEl.textContent = "No .mp4 stream found for this item.";
+        return;
+      }
+
+      const directMp4Url = `https://archive.org/download/${encodeURIComponent(identifier)}/${encodeURIComponent(mp4File.name)}`;
+
+      FilmTV.openStage();
+      const dataRes = await api("/api/filmtv/source", {
+        method: "POST",
+        body: JSON.stringify({ source: directMp4Url, source_type: "url", title: title || undefined }),
+      });
+      if (dataRes?.state) {
+        await FilmTV.loadState(dataRes.state, state.memberId);
+      }
+      if (statusEl) statusEl.textContent = `▶️ Playing "${title}" in-app!`;
+    } catch (err) {
+      clearTimeout(timeoutId);
+      alert(`Unable to stream movie: ${err.message}`);
+      if (statusEl) statusEl.textContent = `Stream error: ${err.message}`;
+    }
+  }
+
   function bindUI() {
     $("#loginForm")?.addEventListener("submit", loginRoom);
 
@@ -1298,12 +1403,34 @@ const App = (() => {
 
     $$(".quick-stream-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
+        if (btn.dataset.type === "archive") {
+          const archiveBox = $("#archiveMoviesContainer");
+          if (archiveBox) {
+            const isHidden = archiveBox.style.display === "none";
+            archiveBox.style.display = isHidden ? "block" : "none";
+            if (isHidden) searchInternetArchive("classic movies");
+          }
+          return;
+        }
         const url = btn.dataset.url;
         if (!url) return;
         const input = $("#inappBrowserUrl");
         if (input) input.value = url;
         navigateInappBrowser(url);
       });
+    });
+
+    $("#btnArchiveSearch")?.addEventListener("click", () => {
+      const input = $("#archiveSearchInput");
+      const q = input ? input.value : "";
+      searchInternetArchive(q);
+    });
+
+    $("#archiveSearchInput")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        searchInternetArchive(e.target.value);
+      }
     });
 
     $("#btnInappBrowserGo")?.addEventListener("click", () => {
