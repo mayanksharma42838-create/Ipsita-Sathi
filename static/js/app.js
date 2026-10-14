@@ -601,6 +601,75 @@ const App = (() => {
       PdfDocumentViewer.clearRemoteAnnotations(payload);
     });
 
+    // WebRTC Screen Sharing Socket Listeners
+    state.socket.on("webrtc_offer", async (payload) => {
+      if (!payload || !payload.sdp) return;
+      FilmTV.openStage();
+
+      if (rtcPeerConnection) rtcPeerConnection.close();
+      rtcPeerConnection = new RTCPeerConnection(rtcConfig);
+
+      rtcPeerConnection.ontrack = (event) => {
+        const videoEl = $("#filmtvVideo");
+        const iframeContainer = $("#filmtvIframeContainer");
+        const empty = $("#filmtvEmpty");
+        if (empty) empty.style.display = "none";
+        if (iframeContainer) iframeContainer.style.display = "none";
+        if (videoEl) {
+          videoEl.srcObject = event.streams[0];
+          videoEl.style.display = "block";
+          videoEl.play().catch(() => {});
+        }
+      };
+
+      rtcPeerConnection.onicecandidate = (e) => {
+        if (e.candidate && state.socket) {
+          state.socket.emit("webrtc_ice_candidate", { candidate: e.candidate });
+        }
+      };
+
+      try {
+        await rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+        const answer = await rtcPeerConnection.createAnswer();
+        await rtcPeerConnection.setLocalDescription(answer);
+        state.socket.emit("webrtc_answer", { sdp: rtcPeerConnection.localDescription });
+      } catch (err) {
+        console.warn("WebRTC offer error:", err);
+      }
+    });
+
+    state.socket.on("webrtc_answer", async (payload) => {
+      if (!payload || !payload.sdp || !rtcPeerConnection) return;
+      try {
+        await rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(payload.sdp));
+      } catch (err) {
+        console.warn("WebRTC answer error:", err);
+      }
+    });
+
+    state.socket.on("webrtc_ice_candidate", async (payload) => {
+      if (!payload || !payload.candidate || !rtcPeerConnection) return;
+      try {
+        await rtcPeerConnection.addIceCandidate(new RTCIceCandidate(payload.candidate));
+      } catch (e) {
+        console.warn("ICE candidate error:", e);
+      }
+    });
+
+    state.socket.on("webrtc_stop_screen", () => {
+      if (rtcPeerConnection) {
+        rtcPeerConnection.close();
+        rtcPeerConnection = null;
+      }
+      const videoEl = $("#filmtvVideo");
+      if (videoEl) {
+        videoEl.srcObject = null;
+        videoEl.style.display = "none";
+      }
+      const empty = $("#filmtvEmpty");
+      if (empty) empty.style.display = "flex";
+    });
+
     state.socket.on("connect", () => {
       state.socket.emit("filmtv_request_sync", { token: state.token });
     });
@@ -1291,7 +1360,106 @@ const App = (() => {
     }
   }
 
+  let rtcPeerConnection = null;
+  let rtcLocalStream = null;
+
+  const rtcConfig = {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" }
+    ]
+  };
+
+  async function startScreenShare() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      alert("Screen sharing is not supported in this browser environment.");
+      return;
+    }
+
+    try {
+      rtcLocalStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: "always" },
+        audio: true
+      });
+
+      FilmTV.openStage();
+      const videoEl = $("#filmtvVideo");
+      const iframeContainer = $("#filmtvIframeContainer");
+      const empty = $("#filmtvEmpty");
+      if (empty) empty.style.display = "none";
+      if (iframeContainer) iframeContainer.style.display = "none";
+      if (videoEl) {
+        videoEl.srcObject = rtcLocalStream;
+        videoEl.style.display = "block";
+        videoEl.play().catch(() => {});
+      }
+
+      if (rtcPeerConnection) rtcPeerConnection.close();
+      rtcPeerConnection = new RTCPeerConnection(rtcConfig);
+
+      rtcLocalStream.getTracks().forEach((track) => {
+        rtcPeerConnection.addTrack(track, rtcLocalStream);
+      });
+
+      rtcPeerConnection.onicecandidate = (e) => {
+        if (e.candidate && state.socket) {
+          state.socket.emit("webrtc_ice_candidate", { candidate: e.candidate });
+        }
+      };
+
+      const offer = await rtcPeerConnection.createOffer();
+      await rtcPeerConnection.setLocalDescription(offer);
+
+      if (state.socket) {
+        state.socket.emit("webrtc_offer", { sdp: rtcPeerConnection.localDescription });
+      }
+
+      const videoTrack = rtcLocalStream.getVideoTracks()[0];
+      if (videoTrack) {
+        videoTrack.onended = () => stopScreenShare();
+      }
+
+      const btn = $("#btnShareScreen");
+      if (btn) {
+        btn.textContent = "🛑 Stop Sharing";
+        btn.onclick = stopScreenShare;
+      }
+    } catch (err) {
+      if (err.name !== "NotAllowedError") {
+        alert(`Screen share error: ${err.message}`);
+      }
+    }
+  }
+
+  function stopScreenShare() {
+    if (rtcLocalStream) {
+      rtcLocalStream.getTracks().forEach((t) => t.stop());
+      rtcLocalStream = null;
+    }
+    if (rtcPeerConnection) {
+      rtcPeerConnection.close();
+      rtcPeerConnection = null;
+    }
+    if (state.socket) {
+      state.socket.emit("webrtc_stop_screen");
+    }
+    const videoEl = $("#filmtvVideo");
+    if (videoEl) {
+      videoEl.srcObject = null;
+      videoEl.style.display = "none";
+    }
+    const empty = $("#filmtvEmpty");
+    if (empty) empty.style.display = "flex";
+
+    const btn = $("#btnShareScreen");
+    if (btn) {
+      btn.textContent = "🖥️ Share Screen / Tab";
+      btn.onclick = startScreenShare;
+    }
+  }
+
   function bindUI() {
+    $("#btnShareScreen")?.addEventListener("click", startScreenShare);
     $("#loginForm")?.addEventListener("submit", loginRoom);
 
     $("#btnSend")?.addEventListener("click", sendText);

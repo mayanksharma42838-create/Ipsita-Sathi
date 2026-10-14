@@ -174,6 +174,52 @@ def on_filmtv_request_sync(_data=None):
     emit("filmtv_state", {"state": member.room.filmtv_state(), "action": "sync", "by": "server"})
 
 
+# ─── WebRTC Screen & Tab Sharing Signaling ───
+
+@socketio.on("webrtc_offer")
+def on_webrtc_offer(data):
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    emit("webrtc_offer", {
+        "sdp": data.get("sdp"),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("webrtc_answer")
+def on_webrtc_answer(data):
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    emit("webrtc_answer", {
+        "sdp": data.get("sdp"),
+        "sender_id": member.id,
+    }, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("webrtc_ice_candidate")
+def on_webrtc_ice_candidate(data):
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    emit("webrtc_ice_candidate", {
+        "candidate": data.get("candidate"),
+        "sender_id": member.id,
+    }, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("webrtc_stop_screen")
+def on_webrtc_stop_screen(data=None):
+    member = _member_from_sid()
+    if not member:
+        return
+    emit("webrtc_stop_screen", {
+        "sender_id": member.id,
+    }, room=f"room:{member.room.room_id}", include_self=False)
+
+
 @socketio.on("widget_sync")
 def on_widget_sync(data):
     """Real-time sync for Home Screen Floating Widget (drawings, notes, photo previews)."""
