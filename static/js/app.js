@@ -1621,8 +1621,16 @@ const App = (() => {
       FilmTV.toggleFullscreen().catch((e) => setFilmTVError(e.message));
     });
 
-    function navigateInappBrowser(url) {
-      if (!url) return;
+    function navigateInappBrowser(rawInput) {
+      if (!rawInput) return;
+      let url = rawInput.trim();
+      if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        if (url.includes(".") && !url.includes(" ")) {
+          url = "https://" + url;
+        } else {
+          url = `https://www.google.com/search?q=${encodeURIComponent(url)}&igu=1`;
+        }
+      }
       FilmTV.openStage();
       const proxyUrl = `/api/filmtv/stream_proxy?target=${encodeURIComponent(url)}`;
       const iframeContainer = $("#filmtvIframeContainer");
