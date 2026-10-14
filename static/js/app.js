@@ -1234,13 +1234,20 @@ const App = (() => {
         const card = document.createElement("div");
         card.className = "archive-movie-card";
 
+        const img = document.createElement("img");
+        img.src = `https://archive.org/services/img/${encodeURIComponent(doc.identifier)}`;
+        img.alt = doc.title || "Movie Poster";
+        img.loading = "lazy";
+        img.style.cssText = "width:100%;height:120px;object-fit:cover;border-radius:6px;margin-bottom:6px;background:rgba(0,0,0,0.3);";
+        img.onerror = () => { img.style.display = "none"; };
+
         const titleDiv = document.createElement("div");
         titleDiv.className = "archive-movie-title";
         titleDiv.textContent = doc.title || doc.identifier;
 
         const metaDiv = document.createElement("div");
         metaDiv.className = "archive-movie-meta";
-        metaDiv.textContent = `📅 ${doc.year || "Classic"} · ⬇️ ${doc.downloads || 0} downloads`;
+        metaDiv.textContent = `📅 ${doc.year || "Classic"} · ⬇️ ${doc.downloads || 0}`;
 
         const playBtn = document.createElement("button");
         playBtn.type = "button";
@@ -1249,6 +1256,7 @@ const App = (() => {
         playBtn.textContent = "▶️ Stream In-App";
         playBtn.onclick = () => streamArchiveMovie(doc.identifier, doc.title || doc.identifier);
 
+        card.appendChild(img);
         card.appendChild(titleDiv);
         card.appendChild(metaDiv);
         card.appendChild(playBtn);
@@ -1263,43 +1271,21 @@ const App = (() => {
 
   async function streamArchiveMovie(identifier, title) {
     const statusEl = $("#archiveSearchStatus");
-    if (statusEl) statusEl.textContent = `⏳ Resolving in-app stream for "${title}"...`;
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    if (statusEl) statusEl.textContent = `⏳ Loading in-app stream for "${title}"...`;
 
     try {
-      const metaUrl = `https://archive.org/metadata/${encodeURIComponent(identifier)}`;
-      const res = await fetch(metaUrl, { signal: controller.signal });
-      clearTimeout(timeoutId);
-      if (!res.ok) throw new Error("Metadata fetch failed");
-      const data = await res.json();
-      const files = data?.files || [];
-
-      const mp4File =
-        files.find((f) => f.name && f.name.toLowerCase().endsWith(".mp4") && f.format && !f.name.toLowerCase().includes("512kb")) ||
-        files.find((f) => f.name && f.name.toLowerCase().endsWith(".mp4")) ||
-        files.find((f) => f.name && (f.name.toLowerCase().endsWith(".ogv") || f.name.toLowerCase().endsWith(".webm")));
-
-      if (!mp4File || !mp4File.name) {
-        alert("No playable .mp4 stream file found for this item.");
-        if (statusEl) statusEl.textContent = "No .mp4 stream found for this item.";
-        return;
-      }
-
-      const directMp4Url = `https://archive.org/download/${encodeURIComponent(identifier)}/${encodeURIComponent(mp4File.name)}`;
+      const embedUrl = `https://archive.org/embed/${encodeURIComponent(identifier)}`;
 
       FilmTV.openStage();
       const dataRes = await api("/api/filmtv/source", {
         method: "POST",
-        body: JSON.stringify({ source: directMp4Url, source_type: "url", title: title || undefined }),
+        body: JSON.stringify({ source: embedUrl, source_type: "url", title: title || undefined }),
       });
       if (dataRes?.state) {
         await FilmTV.loadState(dataRes.state, state.memberId);
       }
       if (statusEl) statusEl.textContent = `▶️ Playing "${title}" in-app!`;
     } catch (err) {
-      clearTimeout(timeoutId);
       alert(`Unable to stream movie: ${err.message}`);
       if (statusEl) statusEl.textContent = `Stream error: ${err.message}`;
     }
@@ -1390,7 +1376,7 @@ const App = (() => {
           iframe = document.createElement("iframe");
           iframe.className = "filmtv-iframe";
           iframe.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
-          iframe.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads allow-modals allow-presentation");
+          iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals allow-presentation");
           iframe.style.cssText = "width:100%;height:100%;border:none;";
           iframeContainer.appendChild(iframe);
         }
@@ -1417,6 +1403,17 @@ const App = (() => {
         const input = $("#inappBrowserUrl");
         if (input) input.value = url;
         navigateInappBrowser(url);
+      });
+    });
+
+    $$(".archive-chip").forEach((chip) => {
+      chip.addEventListener("click", () => {
+        const q = chip.dataset.query;
+        if (q) {
+          const input = $("#archiveSearchInput");
+          if (input) input.value = q;
+          searchInternetArchive(q);
+        }
       });
     });
 

@@ -167,9 +167,16 @@
 
               <!-- Internet Archive Free Movies Hub Container -->
               <div id="archiveMoviesContainer" class="archive-movies-container" style="padding:12px;box-sizing:border-box;">
-                <div class="archive-search-bar" style="display:flex;gap:8px;margin-bottom:10px;">
-                  <input type="text" id="archiveSearchInput" placeholder="Search free movies (e.g. Charlie Chaplin, Sci-Fi, Classic)..." style="flex:1;padding:8px 12px;font-size:0.85rem;border-radius:8px;border:1px solid var(--accent, #ff8fab);background:rgba(0,0,0,0.4);color:#fff;" />
+                <div class="archive-search-bar" style="display:flex;gap:8px;margin-bottom:8px;">
+                  <input type="text" id="archiveSearchInput" placeholder="Search movies (e.g. Hollywood, Bollywood, Sci-Fi, Classic)..." style="flex:1;padding:8px 12px;font-size:0.85rem;border-radius:8px;border:1px solid var(--accent, #ff8fab);background:rgba(0,0,0,0.4);color:#fff;" />
                   <button type="button" class="btn sm" id="btnArchiveSearch">🔍 Search Movies</button>
+                </div>
+                <div class="archive-category-chips" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:8px;">
+                  <button type="button" class="btn sm ghost archive-chip" data-query="hollywood">🎬 Hollywood</button>
+                  <button type="button" class="btn sm ghost archive-chip" data-query="bollywood">🍿 Bollywood</button>
+                  <button type="button" class="btn sm ghost archive-chip" data-query="sci-fi">👽 Sci-Fi & Horror</button>
+                  <button type="button" class="btn sm ghost archive-chip" data-query="action">💥 Action</button>
+                  <button type="button" class="btn sm ghost archive-chip" data-query="classic">📽️ Classics</button>
                 </div>
                 <div id="archiveSearchStatus" class="archive-status-text" style="font-size:0.82rem;color:var(--muted);margin-bottom:8px;">
                   Search or click a category to load free movies from Internet Archive:
@@ -430,7 +437,7 @@
       </div>
       <div id="igFrameWrap" style="margin-top:12px;">
         <div id="igPlaceholder">No URL synced yet</div>
-        <iframe id="igFrame" title="Instagram sync" sandbox="allow-scripts allow-forms"
+        <iframe id="igFrame" title="Instagram sync" sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
           referrerpolicy="no-referrer" loading="lazy"></iframe>
       </div>
       <label style="margin-top:12px;">Encrypted session note (optional)</label>

@@ -65,7 +65,7 @@ const FilmTV = (() => {
     if (!iframeEl || !iframeEl.isConnected) {
       iframeEl = document.createElement("iframe");
       iframeEl.className = "filmtv-iframe";
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads allow-modals allow-presentation");
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals allow-presentation");
       iframeEl.setAttribute("allow", "autoplay; encrypted-media; fullscreen; picture-in-picture");
       iframeEl.style.cssText = "width:100%; height:100%; border:none; display:block;";
       iframeContainer.replaceChildren(iframeEl);
@@ -311,6 +311,8 @@ const FilmTV = (() => {
     fallbackUrl.searchParams.set("autoplay", state.playing ? "1" : "0");
     fallbackUrl.searchParams.set("controls", "1");
     fallbackUrl.searchParams.set("start", String(Math.floor(Number(state.position) || 0)));
+    fallbackUrl.searchParams.set("enablejsapi", "1");
+    fallbackUrl.searchParams.set("origin", window.location.origin);
     iframeEl.src = fallbackUrl.href;
     updateStatusBadge("♡ watching (sync unavailable)");
   }
@@ -420,9 +422,18 @@ const FilmTV = (() => {
     if (youtubePlayer) stopYouTubePlayer();
     ensureIframe();
     if (iframeEl) {
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-forms allow-downloads allow-modals allow-presentation");
+      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals allow-presentation");
       iframeEl.style.display = "block";
       let displaySource = rawUrl;
+
+      if (displaySource.includes("youtube.com/embed/")) {
+        try {
+          const u = new URL(displaySource);
+          u.searchParams.set("enablejsapi", "1");
+          u.searchParams.set("origin", window.location.origin);
+          displaySource = u.href;
+        } catch {}
+      }
 
       if (state.source_type === "upload") {
         const extension = sourceStr.split("?")[0].split("#")[0].split(".").pop();

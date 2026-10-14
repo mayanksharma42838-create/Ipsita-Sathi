@@ -209,7 +209,7 @@ def create_app(config_class=Config):
             "img-src 'self' blob: data: https://images.unsplash.com https://*.unsplash.com https://picsum.photos https://*.picsum.photos; "
             "media-src 'self' blob: https:; "
             "connect-src 'self' ws: wss: https://cdn.socket.io https://cdnjs.cloudflare.com; "
-            "frame-src https://www.instagram.com https://www.youtube.com https://*.youtube.com https://*.google.com https://docs.google.com https://view.officeapps.live.com; "
+            "frame-src https://www.instagram.com https://www.youtube.com https://*.youtube.com https://*.google.com https://docs.google.com https://view.officeapps.live.com https://archive.org https://*.archive.org; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "

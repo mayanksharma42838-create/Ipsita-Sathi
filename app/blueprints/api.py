@@ -789,7 +789,8 @@ def filmtv_load():
     elif host == "youtu.be":
         video_id = parsed.path.strip("/").split("/", 1)[0]
     if video_id:
-        url = f"https://www.youtube.com/embed/{quote(video_id, safe='')}"
+        origin = request.host_url.rstrip("/")
+        url = f"https://www.youtube.com/embed/{quote(video_id, safe='')}?enablejsapi=1&origin={quote(origin, safe='')}"
 
     old_source = g.room.filmtv_source if g.room.filmtv_source_type == "upload" else None
     g.room.filmtv_source_type = "url"
