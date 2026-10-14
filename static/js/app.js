@@ -1658,59 +1658,12 @@ const App = (() => {
 
     $$(".quick-stream-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
-        if (btn.dataset.type === "archive") {
-          const archiveBox = $("#archiveMoviesContainer");
-          if (archiveBox) {
-            const isHidden = archiveBox.style.display === "none";
-            archiveBox.style.display = isHidden ? "block" : "none";
-            if (isHidden) searchMovieDatabase("Hollywood Bollywood");
-          }
-          return;
-        }
         const url = btn.dataset.url;
         if (!url) return;
-        const input = $("#inappBrowserUrl");
+        const input = $("#filmtvUrl");
         if (input) input.value = url;
-        navigateInappBrowser(url);
+        loadFilmTVUrl();
       });
-    });
-
-    $$(".archive-chip").forEach((chip) => {
-      chip.addEventListener("click", () => {
-        const q = chip.dataset.query;
-        if (q) {
-          const input = $("#archiveSearchInput");
-          if (input) input.value = q;
-          searchMovieDatabase(q);
-        }
-      });
-    });
-
-    $("#btnArchiveSearch")?.addEventListener("click", () => {
-      const input = $("#archiveSearchInput");
-      const q = input ? input.value : "";
-      searchMovieDatabase(q);
-    });
-
-    $("#archiveSearchInput")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        searchMovieDatabase(e.target.value);
-      }
-    });
-
-    $("#btnInappBrowserGo")?.addEventListener("click", () => {
-      const input = $("#inappBrowserUrl");
-      const url = input ? input.value.trim() : "";
-      if (url) navigateInappBrowser(url);
-    });
-
-    $("#inappBrowserUrl")?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        const url = e.target.value.trim();
-        if (url) navigateInappBrowser(url);
-      }
     });
 
     $("#btnEnableNotifications")?.addEventListener("click", () => {
@@ -1861,6 +1814,10 @@ const App = (() => {
       }
     });
     $("#filmtvFile")?.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) uploadFilmTV(f);
+    });
+    $("#filmtvFileEmpty")?.addEventListener("change", (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) uploadFilmTV(f);
     });
