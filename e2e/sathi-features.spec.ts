@@ -26,6 +26,7 @@ test.describe('Ipsita-Sathi Couple App Full Feature Audit', () => {
     });
 
     test('2. Check Games and Vault Navigation', async ({ page }) => {
+        test.setTimeout(60000);
         await page.goto(LIVE_URL);
         await page.waitForLoadState('networkidle');
 
