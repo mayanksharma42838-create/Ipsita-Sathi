@@ -1566,7 +1566,7 @@ const App = (() => {
         iframe = document.createElement("iframe");
         iframe.className = "filmtv-iframe";
         iframe.setAttribute("allow", "display-capture; camera; microphone; fullscreen; clipboard-read; clipboard-write; autoplay; encrypted-media; picture-in-picture");
-        iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals allow-presentation");
+        iframe.removeAttribute("sandbox");
         iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
         iframeContainer.appendChild(iframe);
       }
@@ -1680,7 +1680,7 @@ const App = (() => {
           iframe = document.createElement("iframe");
           iframe.className = "filmtv-iframe";
           iframe.setAttribute("allow", "display-capture; camera; microphone; fullscreen; clipboard-read; clipboard-write; autoplay; encrypted-media; picture-in-picture");
-          iframe.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals allow-presentation");
+          iframe.removeAttribute("sandbox");
           iframe.style.cssText = "width:100%;height:100%;border:none;";
           iframeContainer.appendChild(iframe);
         }

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import uuid
 import zipfile
 import hashlib
@@ -29,6 +30,7 @@ from app.security import (
     sniff_image_ext,
     sniff_video_ok,
     validate_direct_video_url,
+    _is_private_or_local,
 )
 
 import logging
@@ -784,15 +786,14 @@ def filmtv_load():
     ):
         return jsonify({"error": "Only HTTPS URLs are allowed for security"}), 400
 
-    host = parsed.hostname.lower().rstrip(".")
-    video_id = None
-    if host in {"youtube.com", "www.youtube.com", "m.youtube.com"} and parsed.path == "/watch":
-        video_id = parse_qs(parsed.query).get("v", [None])[0]
-    elif host == "youtu.be":
-        video_id = parsed.path.strip("/").split("/", 1)[0]
-    if video_id:
+    if _is_private_or_local(parsed.hostname):
+        return jsonify({"error": "Private / local network URLs are blocked"}), 400
+
+    yt_match = re.search(r"(?:v=|\/embed\/|\/shorts\/|\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})", url)
+    if yt_match:
+        video_id = yt_match.group(1)
         origin = request.host_url.rstrip("/")
-        url = f"https://www.youtube.com/embed/{quote(video_id, safe='')}?enablejsapi=1&origin={quote(origin, safe='')}"
+        url = f"https://www.youtube.com/embed/{video_id}?enablejsapi=1&origin={quote(origin, safe='')}"
 
     old_source = g.room.filmtv_source if g.room.filmtv_source_type == "upload" else None
     g.room.filmtv_source_type = "url"
@@ -1149,6 +1150,24 @@ def filmtv_stream_proxy():
         parsed = urlsplit(target_url)
         if parsed.scheme not in ("http", "https"):
             return jsonify({"error": "Only HTTP/HTTPS URLs allowed"}), 400
+
+        # Special handling for NetMirror: render direct iframe stage to bypass Cloudflare bot challenge
+        if "netmirror.app" in target_url.lower():
+            netmirror_html = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NetMirror Stream</title>
+    <style>
+        html, body, iframe { width: 100%; height: 100%; margin: 0; padding: 0; border: none; overflow: hidden; background: #000; }
+    </style>
+</head>
+<body>
+    <iframe src="https://netmirror.app" allow="autoplay; encrypted-media; fullscreen; picture-in-picture; display-capture; camera; microphone" referrerpolicy="no-referrer"></iframe>
+</body>
+</html>"""
+            return Response(netmirror_html, mimetype="text/html", status=200)
 
         # Special handling for Netflix URLs: render interactive cinema card to prevent DRM / X-Frame-Options blank screen
         if "netflix.com" in target_url.lower():

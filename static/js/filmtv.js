@@ -65,7 +65,6 @@ const FilmTV = (() => {
     if (!iframeEl || !iframeEl.isConnected) {
       iframeEl = document.createElement("iframe");
       iframeEl.className = "filmtv-iframe";
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals allow-presentation");
       iframeEl.setAttribute("allow", "display-capture; camera; microphone; fullscreen; clipboard-read; clipboard-write; autoplay; encrypted-media; picture-in-picture");
       iframeEl.style.cssText = "width:100%; height:100%; border:none; display:block;";
       iframeContainer.replaceChildren(iframeEl);
@@ -422,7 +421,7 @@ const FilmTV = (() => {
     if (youtubePlayer) stopYouTubePlayer();
     ensureIframe();
     if (iframeEl) {
-      iframeEl.setAttribute("sandbox", "allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals allow-presentation");
+      iframeEl.removeAttribute("sandbox");
       iframeEl.style.display = "block";
       let displaySource = rawUrl;
 
