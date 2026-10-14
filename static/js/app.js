@@ -1269,6 +1269,93 @@ const App = (() => {
     });
   }
 
+  async function searchMovieDatabase(query = "") {
+    const statusEl = $("#archiveSearchStatus");
+    const gridEl = $("#archiveSearchResults");
+    if (!gridEl) return;
+
+    const q = query.trim() || "Hollywood Bollywood Cinema";
+    if (statusEl) statusEl.textContent = `🔍 Searching TMDB database for "${q}"...`;
+    gridEl.innerHTML = '<p class="hint" style="grid-column:1/-1;text-align:center;padding:20px;">Searching global cinema database...</p>';
+
+    try {
+      const res = await fetch(`/api/tmdb/search?q=${encodeURIComponent(q)}`, {
+        headers: { "X-Session-Token": state.token }
+      });
+      const data = await res.json();
+      const results = data?.results || [];
+
+      if (results.length > 0) {
+        gridEl.innerHTML = "";
+        if (statusEl) statusEl.textContent = `Found ${results.length} exact movie matches for "${q}":`;
+
+        results.forEach((item) => {
+          const card = document.createElement("div");
+          card.className = "archive-movie-card";
+
+          const title = item.title || item.original_title || "Movie";
+          const year = (item.release_date || "").substring(0, 4) || "Cinema";
+          const rating = item.vote_average ? item.vote_average.toFixed(1) : "7.5";
+          const poster = item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : "https://via.placeholder.com/300x450/121826/ff8fab?text=Poster";
+
+          const img = document.createElement("img");
+          img.src = poster;
+          img.alt = title;
+          img.loading = "lazy";
+          img.style.cssText = "width:100%;height:130px;object-fit:cover;border-radius:6px;margin-bottom:6px;background:rgba(0,0,0,0.3);";
+          img.onerror = () => { img.src = "https://via.placeholder.com/300x450/121826/ff8fab?text=Movie"; };
+
+          const titleDiv = document.createElement("div");
+          titleDiv.className = "archive-movie-title";
+          titleDiv.textContent = title;
+
+          const metaDiv = document.createElement("div");
+          metaDiv.className = "archive-movie-meta";
+          metaDiv.textContent = `📅 ${year} · ⭐ ${rating} · 🌐 ${(item.original_language || "en").toUpperCase()}`;
+
+          const playBtn = document.createElement("button");
+          playBtn.type = "button";
+          playBtn.className = "btn sm";
+          playBtn.style.cssText = "width:100%;margin-top:6px;background:var(--accent, #ff8fab);color:#121826;font-weight:bold;";
+          playBtn.textContent = "▶️ Stream In-App";
+          playBtn.onclick = () => streamTmdbMovie(title, year);
+
+          card.appendChild(img);
+          card.appendChild(titleDiv);
+          card.appendChild(metaDiv);
+          card.appendChild(playBtn);
+          gridEl.appendChild(card);
+        });
+        return;
+      }
+    } catch (e) {
+      console.warn("TMDB API fallback to Archive:", e);
+    }
+
+    searchInternetArchive(q);
+  }
+
+  async function streamTmdbMovie(title, year) {
+    const statusEl = $("#archiveSearchStatus");
+    if (statusEl) statusEl.textContent = `⏳ Loading in-app stream for "${title}" (${year})...`;
+
+    try {
+      const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(title + ' full movie ' + year)}`;
+      FilmTV.openStage();
+      const dataRes = await api("/api/filmtv/source", {
+        method: "POST",
+        body: JSON.stringify({ source: searchUrl, source_type: "url", title: `${title} (${year})` }),
+      });
+      if (dataRes?.state) {
+        await FilmTV.loadState(dataRes.state, state.memberId);
+      }
+      if (statusEl) statusEl.textContent = `▶️ Playing "${title}" (${year}) in-app!`;
+    } catch (err) {
+      alert(`Unable to load stream: ${err.message}`);
+      if (statusEl) statusEl.textContent = `Stream error: ${err.message}`;
+    }
+  }
+
   async function searchInternetArchive(query = "") {
     const statusEl = $("#archiveSearchStatus");
     const gridEl = $("#archiveSearchResults");
@@ -1568,7 +1655,7 @@ const App = (() => {
           if (archiveBox) {
             const isHidden = archiveBox.style.display === "none";
             archiveBox.style.display = isHidden ? "block" : "none";
-            if (isHidden) searchInternetArchive("classic movies");
+            if (isHidden) searchMovieDatabase("Hollywood Bollywood");
           }
           return;
         }
@@ -1586,7 +1673,7 @@ const App = (() => {
         if (q) {
           const input = $("#archiveSearchInput");
           if (input) input.value = q;
-          searchInternetArchive(q);
+          searchMovieDatabase(q);
         }
       });
     });
@@ -1594,13 +1681,13 @@ const App = (() => {
     $("#btnArchiveSearch")?.addEventListener("click", () => {
       const input = $("#archiveSearchInput");
       const q = input ? input.value : "";
-      searchInternetArchive(q);
+      searchMovieDatabase(q);
     });
 
     $("#archiveSearchInput")?.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        searchInternetArchive(e.target.value);
+        searchMovieDatabase(e.target.value);
       }
     });
 

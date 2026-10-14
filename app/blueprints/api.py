@@ -7,6 +7,8 @@ import uuid
 import zipfile
 import hashlib
 import math
+import json
+import urllib.request
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
@@ -810,6 +812,39 @@ def filmtv_load():
         room=f"room:{g.room.room_id}",
     )
     return jsonify({"ok": True, "state": state})
+
+
+@bp.get("/tmdb/search")
+@login_required
+def tmdb_search():
+    """TMDB Multi-Search / Movie API for exact-match Hollywood, Bollywood, and regional movie discovery."""
+    query = request.args.get("q", "").strip()
+    if not query:
+        return jsonify({"ok": True, "results": []})
+
+    tmdb_key = os.environ.get("TMDB_API_KEY", "15d2fb7fe0d42471698f0a7707f1807d")
+    encoded_query = quote(query)
+    url = f"https://api.themoviedb.org/3/search/movie?api_key={tmdb_key}&query={encoded_query}&include_adult=false&language=en-US&page=1"
+
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "SathiApp/2.0"})
+        with urllib.request.urlopen(req, timeout=6) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            results = data.get("results", [])
+
+            # Exact name match prioritization
+            q_clean = query.lower()
+            def sort_key(item):
+                title = (item.get("title") or item.get("original_title") or "").lower()
+                exact = 0 if title == q_clean else (1 if title.startswith(q_clean) else 2)
+                pop = float(item.get("popularity") or 0)
+                return (exact, -pop)
+
+            results.sort(key=sort_key)
+            return jsonify({"ok": True, "results": results[:20]})
+    except Exception as e:
+        logger.warning(f"TMDB search error: {e}")
+        return jsonify({"ok": False, "error": str(e), "results": []})
 
 
 @bp.post("/filmtv/upload")
