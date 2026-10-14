@@ -90,7 +90,7 @@ def create_app(config_class=Config):
         response.headers["X-Frame-Options"] = "SAMEORIGIN"
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
-        response.headers["Permissions-Policy"] = "display-capture=(), camera=(), microphone=(self)"
+        response.headers["Permissions-Policy"] = "display-capture=(self), camera=(), microphone=(self)"
         
         response.headers["Content-Security-Policy"] = (
             "default-src 'self' blob: data: https: ws: wss:; "
