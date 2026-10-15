@@ -271,7 +271,6 @@ def post_message():
 @bp.post("/media")
 @login_required
 def upload_media():
-    """Accept encrypted media blob + ciphertext caption; store locally."""
     limited = rate_or_429("media_upload", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
@@ -538,7 +537,6 @@ def theme_background():
         except ValueError:
             pass
     
-    # 1x1 transparent fallback PNG to prevent 404 console errors when custom background is unset
     fallback_png = (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
         b"\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05"
@@ -733,9 +731,6 @@ def get_doodle():
     return Response(fallback_png, mimetype="image/png", status=200)
 
 
-# ─── FilmTV Watch Party (native HTML5 only) ─────────────────────────
-
-
 @bp.get("/filmtv/state")
 @login_required
 def filmtv_state():
@@ -754,7 +749,6 @@ def filmtv_state():
 @bp.post("/filmtv/load")
 @login_required
 def filmtv_load():
-    """Load a shared URL (video, doc, or app) into the workspace with auto YouTube embedding conversion."""
     limited = rate_or_429("filmtv_load", *current_app.config["RL_FILMTV"])
     if limited:
         return limited
@@ -818,7 +812,6 @@ def filmtv_load():
 @bp.get("/tmdb/search")
 @login_required
 def tmdb_search():
-    """TMDB Multi-Search / Movie API for exact-match Hollywood, Bollywood, and regional movie discovery."""
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"ok": True, "results": []})
@@ -833,7 +826,6 @@ def tmdb_search():
             data = json.loads(resp.read().decode("utf-8"))
             results = data.get("results", [])
 
-            # Exact name match prioritization
             q_clean = query.lower()
             def sort_key(item):
                 title = (item.get("title") or item.get("original_title") or "").lower()
@@ -851,7 +843,6 @@ def tmdb_search():
 @bp.post("/filmtv/upload")
 @login_required
 def filmtv_upload():
-    """Upload a local movie/video or document for shared playback."""
     limited = rate_or_429("filmtv_upload", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
@@ -1030,7 +1021,6 @@ def filmtv_clear_annotations():
 
 @bp.get("/filmtv/stream")
 def filmtv_stream():
-    """Stream an upload with byte ranges; external viewers use short-lived scoped tickets."""
     ticket = request.args.get("ticket")
     room = None
     if ticket:
@@ -1098,7 +1088,6 @@ def filmtv_clear():
 @bp.get("/gallery")
 @login_required
 def list_gallery():
-    """Fetch all non-expired media history for the room."""
     rows = (
         Message.query.options(joinedload(Message.sender))
         .filter(
@@ -1137,11 +1126,6 @@ def export_blocked():
 
 @bp.route("/filmtv/stream_proxy", methods=["GET"])
 def filmtv_stream_proxy():
-    """Streaming proxy & CORS bypass route for web streams & video embeds."""
-    import urllib.request
-    import urllib.error
-    import re
-
     target_url = request.args.get("target") or request.args.get("url")
     if not target_url:
         return jsonify({"error": "Target URL is required"}), 400
@@ -1151,7 +1135,6 @@ def filmtv_stream_proxy():
         if parsed.scheme not in ("http", "https"):
             return jsonify({"error": "Only HTTP/HTTPS URLs allowed"}), 400
 
-        # Special handling for NetMirror: render direct iframe stage to bypass Cloudflare bot challenge
         if "netmirror.app" in target_url.lower():
             netmirror_html = """<!DOCTYPE html>
 <html>
@@ -1169,7 +1152,6 @@ def filmtv_stream_proxy():
 </html>"""
             return Response(netmirror_html, mimetype="text/html", status=200)
 
-        # Special handling for Netflix URLs: render interactive cinema card to prevent DRM / X-Frame-Options blank screen
         if "netflix.com" in target_url.lower():
             title_match = re.search(r"/watch/(\d+)", target_url)
             title_id = title_match.group(1) if title_match else "Watch Party"

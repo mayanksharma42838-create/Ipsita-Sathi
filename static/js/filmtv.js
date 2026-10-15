@@ -52,7 +52,6 @@ const FilmTV = (() => {
     ensureIframe();
     bindVideoControls();
     pdfViewer()?.init({ tokenFn: getToken });
-
   }
 
   function setSocket(sock) {
@@ -431,7 +430,7 @@ const FilmTV = (() => {
           u.searchParams.set("enablejsapi", "1");
           u.searchParams.set("origin", window.location.origin);
           displaySource = u.href;
-        } catch {}
+        } catch { }
       }
 
       if (state.source_type === "upload") {
