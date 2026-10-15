@@ -1551,42 +1551,7 @@ const App = (() => {
     }
   }
 
-  async function loadNetMirrorStream() {
-    FilmTV.openStage();
-    const proxyUrl = `/api/filmtv/stream_proxy?target=${encodeURIComponent("https://netmirror.app")}`;
-    const iframeContainer = $("#filmtvIframeContainer");
-    const empty = $("#filmtvEmpty");
-    const videoEl = $("#filmtvVideo");
-    if (videoEl) videoEl.style.display = "none";
-    if (empty) empty.style.display = "none";
-    if (iframeContainer) {
-      iframeContainer.style.display = "block";
-      let iframe = iframeContainer.querySelector("iframe");
-      if (!iframe) {
-        iframe = document.createElement("iframe");
-        iframe.className = "filmtv-iframe";
-        iframe.setAttribute("allow", "display-capture; camera; microphone; fullscreen; clipboard-read; clipboard-write; autoplay; encrypted-media; picture-in-picture");
-        iframe.removeAttribute("sandbox");
-        iframe.style.cssText = "width:100%;height:100%;border:none;display:block;";
-        iframeContainer.appendChild(iframe);
-      }
-      iframe.src = proxyUrl;
-    }
-    try {
-      const dataRes = await api("/api/filmtv/source", {
-        method: "POST",
-        body: JSON.stringify({ source: "https://netmirror.app", source_type: "url", title: "NetMirror Stream" }),
-      });
-      if (dataRes?.state) {
-        await FilmTV.loadState(dataRes.state, state.memberId);
-      }
-    } catch (err) {
-      console.warn("NetMirror sync error:", err);
-    }
-  }
-
   function bindUI() {
-    $("#btnNetMirror")?.addEventListener("click", loadNetMirrorStream);
     $("#btnShareScreen")?.addEventListener("click", startScreenShare);
     $("#loginForm")?.addEventListener("submit", loginRoom);
 
@@ -1695,10 +1660,6 @@ const App = (() => {
       btn.addEventListener("click", () => {
         const url = btn.dataset.url;
         if (!url) return;
-        if (url.includes("netmirror.app")) {
-          loadNetMirrorStream();
-          return;
-        }
         const input = $("#filmtvUrl");
         if (input) input.value = url;
         loadFilmTVUrl();

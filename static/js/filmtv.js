@@ -425,9 +425,7 @@ const FilmTV = (() => {
       iframeEl.style.display = "block";
       let displaySource = rawUrl;
 
-      if (displaySource.includes("netmirror.app")) {
-        displaySource = `/api/filmtv/stream_proxy?target=${encodeURIComponent("https://netmirror.app")}`;
-      } else if (displaySource.includes("youtube.com/embed/")) {
+      if (displaySource.includes("youtube.com/embed/")) {
         try {
           const u = new URL(displaySource);
           u.searchParams.set("enablejsapi", "1");
