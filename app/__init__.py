@@ -1,0 +1,222 @@
+import os
+from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
+
+from app.config import BASE_DIR, Config
+from app.extensions import db, socketio
+
+
+def create_app(config_class=Config):
+    app = Flask(
+        __name__,
+        template_folder=str(BASE_DIR / "templates"),
+        static_folder=str(BASE_DIR / "static"),
+        static_url_path="/static",
+    )
+    app.config.from_object(config_class)
+
+    # Robust CORS and SocketIO origin parsing from config/env
+    raw_origins = app.config.get("CORS_ORIGINS")
+    if not raw_origins:
+        raw_origins = os.environ.get("CORS_ORIGINS", "http://127.0.0.1:5000")
+
+    if isinstance(raw_origins, str):
+        origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+    elif isinstance(raw_origins, (list, tuple)):
+        origins = list(raw_origins)
+    else:
+        origins = ["http://127.0.0.1:5000"]
+
+    CORS(
+        app,
+        origins=origins,
+        supports_credentials=True,
+        allow_headers=["Content-Type", "X-Session-Token", "Authorization"],
+        methods=["GET", "POST", "OPTIONS"],
+    )
+
+    db.init_app(app)
+    from app import sockets as _socket_handlers  # noqa: F401
+
+    socketio.init_app(
+        app,
+        cors_allowed_origins=origins,
+        async_mode="eventlet",
+        logger=False,
+        engineio_logger=False,
+    )
+
+    from app.blueprints.auth import bp as auth_bp
+    from app.blueprints.api import bp as api_bp
+
+    app.register_blueprint(auth_bp)
+    app.register_blueprint(api_bp)
+
+    @app.errorhandler(413)
+    def request_too_large(_error):
+        return jsonify({"error": "Request exceeds the configured upload limit."}), 413
+
+    @app.route("/")
+    def index():
+        return render_template("index.html")
+
+    @app.route("/favicon.ico")
+    def favicon():
+        return "", 204
+
+    # --- BULLETPROOF FILM-TV SAFE FALLBACK ROUTES (Only active if blueprint route is bypassed) ---
+    @app.route("/api/filmtv/state_fallback", methods=["GET"])
+    def fallback_filmtv_state():
+        return jsonify({"state": None})
+
+    @app.route("/api/filmtv/clear_fallback", methods=["POST"])
+    def fallback_filmtv_clear():
+        return jsonify({"ok": True, "state": None})
+    # ---------------------------------------------------------------------------
+
+    @app.after_request
+    def security_headers(response):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "display-capture=(self), camera=(), microphone=(self)"
+        
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self' blob: data: https: ws: wss:; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https: blob:; "
+            "style-src 'self' 'unsafe-inline' https:; "
+            "font-src 'self' https: data:; "
+            "worker-src 'self' blob: https:; "
+            "img-src 'self' blob: data: https:; "
+            "media-src 'self' blob: https:; "
+            "connect-src 'self' ws: wss: https:; "
+            "frame-src 'self' blob: https:; "
+            "frame-ancestors 'self'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "object-src 'none'"
+        )
+        return response
+
+    with app.app_context():
+        db.create_all()
+        _ensure_schema_patches()
+        _start_expiry_sweeper(app)
+
+    return app
+
+
+def _ensure_schema_patches() -> None:
+    """Lightweight SQLite migrations for FilmTV columns + nullable session_token."""
+    from sqlalchemy import text
+
+    cols = {
+        "phone_number": "VARCHAR(20)",
+        "filmtv_source_type": "VARCHAR(32)",
+        "filmtv_source": "VARCHAR(2048)",
+        "filmtv_title": "VARCHAR(256)",
+        "filmtv_playing": "BOOLEAN DEFAULT 0 NOT NULL",
+        "filmtv_position": "FLOAT DEFAULT 0 NOT NULL",
+        "filmtv_updated_at": "DATETIME",
+    }
+    try:
+        existing = {
+            row[1] for row in db.session.execute(text("PRAGMA table_info(rooms)")).fetchall()
+        }
+        for name, typedef in cols.items():
+            if name not in existing:
+                db.session.execute(text(f"ALTER TABLE rooms ADD COLUMN {name} {typedef}"))
+        db.session.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_rooms_phone_number ON rooms (phone_number)")
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    try:
+        info = db.session.execute(text("PRAGMA table_info(members)")).fetchall()
+        tok_col = next((r for r in info if r[1] == "session_token"), None)
+        if tok_col is not None and tok_col[3] == 1:  # notnull == 1
+            db.session.execute(text("PRAGMA foreign_keys=OFF"))
+            db.session.execute(
+                text(
+                    """
+                    CREATE TABLE members_new (
+                        id INTEGER NOT NULL PRIMARY KEY,
+                        room_pk INTEGER NOT NULL,
+                        display_name VARCHAR(64) NOT NULL,
+                        session_token VARCHAR(128),
+                        joined_at DATETIME NOT NULL,
+                        last_seen DATETIME NOT NULL,
+                        is_online BOOLEAN NOT NULL,
+                        FOREIGN KEY(room_pk) REFERENCES rooms (id),
+                        UNIQUE (room_pk, display_name),
+                        UNIQUE (session_token)
+                    )
+                    """
+                )
+            )
+            db.session.execute(
+                text(
+                    """
+                    INSERT INTO members_new
+                        (id, room_pk, display_name, session_token, joined_at, last_seen, is_online)
+                    SELECT id, room_pk, display_name, session_token, joined_at, last_seen, is_online
+                    FROM members
+                    """
+                )
+            )
+            db.session.execute(text("DROP TABLE members"))
+            db.session.execute(text("ALTER TABLE members_new RENAME TO members"))
+            db.session.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_members_session_token ON members (session_token)")
+            )
+            db.session.execute(text("PRAGMA foreign_keys=ON"))
+            db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+def _start_expiry_sweeper(app: Flask) -> None:
+    from pathlib import Path as P
+    from app.models import Message, utcnow
+
+    def loop():
+        while True:
+            socketio.sleep(15)
+            with app.app_context():
+                try:
+                    now = utcnow()
+                    expired = Message.query.filter(
+                        Message.deleted.is_(False),
+                        Message.expires_at.isnot(None),
+                        Message.expires_at <= now,
+                    ).all()
+                    by_room: dict[str, list[int]] = {}
+                    media_paths_to_unlink: list[str] = []
+                    for msg in expired:
+                        msg.deleted = True
+                        if msg.media_path:
+                            media_paths_to_unlink.append(msg.media_path)
+                            msg.media_path = None
+                        rid = msg.room.room_id if msg.room else None
+                        if rid:
+                            by_room.setdefault(rid, []).append(msg.id)
+                    if expired:
+                        db.session.commit()
+
+                    for media_path in media_paths_to_unlink:
+                        try:
+                            P(media_path).unlink(missing_ok=True)
+                        except (OSError, FileNotFoundError):
+                            pass
+                    for rid, ids in by_room.items():
+                        socketio.emit("messages_expired", {"ids": ids}, room=f"room:{rid}")
+
+                except Exception:
+                    db.session.rollback()
+
+    socketio.start_background_task(loop)
+        

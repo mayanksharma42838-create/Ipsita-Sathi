@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta http-equiv="Cache-Control" content="no-store" />
+  <title>Ipsita-Sathi</title>
+  <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Nunito:wght@400;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/app.css?v=3.1" />
+  <style>
+    /* Custom inline style for adjustable resizable panes in FilmTV mode */
+    #roomSplit {
+      display: flex;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #filmtvStage {
+      resize: horizontal;
+      overflow: auto;
+      min-width: 300px;
+      max-width: 80vw;
+    }
+
+    #appMain {
+      flex: 1;
+      min-width: 300px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ambient" aria-hidden="true"></div>
+
+  <!-- WhatsApp-Style Background Notification Banner -->
+  <div id="waNotificationBanner" class="wa-notification-banner">
+    <div class="wa-notify-avatar">💬</div>
+    <div class="wa-notify-content">
+      <strong id="waNotifySender">Partner</strong>
+      <p id="waNotifyMessage">New message received</p>
+    </div>
+  </div>
+
+  <!-- Home Screen Floating Extension Widget Overlay -->
+  <div id="floatingWidgetOverlay" class="floating-widget-container hidden">
+    <div class="floating-widget-header">
+      <span class="widget-title">✨ Ipsita-Sathi Floating Sync</span>
+      <div class="widget-controls">
+        <button id="btnWidgetPip" type="button" class="btn sm ghost" title="Pop out floating window">📌 PiP</button>
+        <button id="btnWidgetClose" type="button" class="btn sm ghost" title="Close">✖</button>
+      </div>
+    </div>
+    <div class="floating-widget-body">
+      <div id="widgetPreviewText" class="widget-text-preview">Connected & Synced</div>
+      <canvas id="widgetCanvas" width="280" height="120"></canvas>
+      <div class="widget-input-row">
+        <input type="text" id="widgetInput" placeholder="Send note to partner..." />
+        <button id="btnWidgetSend" type="button" class="btn sm">Send</button>
+      </div>
+    </div>
+  </div>
+  <div id="appShell">
+    <div class="offline-banner" id="offlineBanner">You're offline — messages will sync when connection returns.</div>
+
+    <div id="authView">
+      <div class="brand">Ipsita-Sathi</div>
+      <p class="tagline">Your private room, ready whenever you return.</p>
+      <div class="panel">
+        <form id="loginForm" novalidate>
+          <label for="phoneNumber">Contact (Phone Number)</label>
+          <input type="text" id="phoneNumber" autocomplete="tel"
+            placeholder="Phone number (+1 555...)" />
+
+          <label for="emailAddress">Gmail / Email Address</label>
+          <input type="email" id="emailAddress" autocomplete="email"
+            placeholder="Email (you@gmail.com)" />
+
+          <label for="roomName">Room Name / ID (Optional)</label>
+          <input type="text" id="roomName" autocomplete="off"
+            placeholder="Enter Room Name / Code" />
+
+          <label for="roomPassword">Shared Room Password</label>
+          <input type="password" id="roomPassword" autocomplete="current-password" required
+            placeholder="Enter your private room password" />
+
+          <details class="legacy-room-link">
+            <summary>Link a room created with the old login</summary>
+            <label for="legacyRoomId">Existing room ID (one-time link)</label>
+            <input type="text" id="legacyRoomId" autocomplete="off" maxlength="64"
+              placeholder="Enter the old room ID once" />
+          </details>
+
+          <button type="submit" class="btn block" id="btnLogin">Continue to private room</button>
+        </form>
+
+        <p class="err" id="authError"></p>
+        <p class="hint">The same phone number and room password open your private room on each device. Two people can
+          share a room. Messages stay end-to-end encrypted.</p>
+      </div>
+    </div>
+
+    <div id="chatView">
+      <div class="topbar wa-topbar">
+        <div class="wa-header-user">
+          <img id="partnerAvatarHeader" src="/api/profile/avatar" alt="DP" class="wa-avatar-header" />
+          <div class="wa-header-info">
+            <h2 id="roomLabel" class="wa-room-title">Private Room</h2>
+            <div class="presence wa-presence">
+              <span class="dot" id="presenceDot"></span>
+              <span id="presenceText">connecting…</span>
+              · <span id="meLabel"></span>
+            </div>
+          </div>
+        </div>
+        <div class="toolbar wa-toolbar">
+          <button type="button" class="btn ghost icon-btn" id="btnGames" title="Couple Games">🎮</button>
+          <button type="button" class="btn ghost icon-btn" id="btnGallery" title="Room Vault">🖼️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnFilmTV" title="FilmTV Watch Party">🎬</button>
+          <button type="button" class="btn ghost icon-btn" id="btnTheme" title="Theme">🎨</button>
+          <button type="button" class="btn ghost icon-btn" id="btnDoodle" title="Doodle">✏️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnSettings" title="Room & Profile Settings">⚙️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnLogoutTop" title="Leave Room">🚪</button>
+        </div>
+      </div>
+
+      <div id="roomSplit">
+        <!-- FilmTV Watch Party stage with resizable support -->
+        <section id="filmtvStage" class="filmtv-stage" aria-label="FilmTV Watch Party">
+          <header class="filmtv-header">
+            <div>
+              <p class="filmtv-kicker">Watch together</p>
+              <h3 id="filmtvTitle">FilmTV Watch Party</h3>
+            </div>
+            <div class="filmtv-header-actions">
+              <span class="filmtv-sync" id="filmtvSyncBadge">♡ ready</span>
+              <button type="button" class="btn sm" id="btnShareScreen" title="Share Screen or Browser Tab Live with Partner" style="background:var(--accent, #ff8fab);color:#121826;font-weight:bold;">🖥️ Share Screen / Tab</button>
+              <button type="button" class="btn ghost sm" id="btnTheater" title="Theater mode">Theater</button>
+              <button type="button" class="btn ghost sm" id="btnFilmTVMessages" aria-pressed="false">Messages</button>
+              <button type="button" class="btn ghost sm" id="btnToggleFloatingChat" title="Toggle Mini Floating Chat">💬 Overlay Chat</button>
+              <button type="button" class="btn sm" id="btnFilmTVFullscreen" aria-pressed="false" style="background:var(--accent, #ff8fab);color:#121826;font-weight:bold;">⛶ Fullscreen</button>
+              <button type="button" class="btn ghost sm" id="btnFilmTVClose" title="Close FilmTV">Close</button>
+            </div>
+          </header>
+
+          <form id="filmtvSearchForm" class="filmtv-search" role="search">
+            <label for="filmtvSearchInput">Search together</label>
+            <input id="filmtvSearchInput" type="search" maxlength="300" placeholder="Search Google..." autocomplete="off" />
+            <button type="submit" class="btn sm">Search Google ↗</button>
+            <button type="button" class="btn sm ghost" id="btnFilmTVAutoOpenSearch" aria-pressed="false" title="Allow partner searches and watch-app links to open in a tab">Enable partner auto-open</button>
+            <button type="button" class="btn sm ghost" id="btnFilmTVPartnerSearch" hidden>Open partner's search ↗</button>
+            <span id="filmtvSearchStatus" role="status" aria-live="polite"></span>
+          </form>
+
+          <div class="filmtv-provider-links" aria-label="Official synchronized watch apps">
+            <span>Watch apps</span>
+            <button type="button" class="btn sm ghost" data-watch-provider="teleparty">TP Teleparty ↗</button>
+            <button type="button" class="btn sm ghost" data-watch-provider="rave">Rave ↗</button>
+            <button type="button" class="btn sm ghost" id="btnFilmTVPartnerProvider" hidden>Open partner's app ↗</button>
+          </div>
+
+          <section class="filmtv-movies" aria-label="Public-domain movie search">
+            <form id="archiveSearchForm" class="filmtv-search" role="search">
+              <label for="archiveSearchInput">Find full-length free movies</label>
+              <input id="archiveSearchInput" type="search" maxlength="120" placeholder="Try Duck and Cover or Night of the Living Dead" autocomplete="off" required />
+              <button type="submit" class="btn sm">Search movies</button>
+            </form>
+            <p id="archiveSearchStatus" role="status" aria-live="polite">Only 60+ minute items in curated Archive collections. Latest commercial releases are not included.</p>
+            <div id="archiveSearchResults" class="archive-search-results"></div>
+          </section>
+
+          <div class="filmtv-player-wrap">
+            <video id="filmtvVideo" playsinline controls controlslist="nodownload" style="display:none;"></video>
+            
+            <div id="filmtvEmpty" class="filmtv-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 20px;text-align:center;background:rgba(18,24,38,0.7);border-radius:12px;">
+              <span class="heart-mark" aria-hidden="true" style="font-size:2.2rem;color:var(--accent,#ff8fab);margin-bottom:8px;">♡</span>
+              <h4 style="margin:0 0 6px 0;color:var(--text, #f0f4f8);font-size:1.15rem;">FilmTV Watch Party</h4>
+              <p style="margin:0 0 18px 0;color:var(--muted);font-size:0.88rem;max-width:460px;line-height:1.4;">
+                Watch embeddable YouTube videos or uploaded media together. For streaming services that block in-app playback, use Share Screen / Tab.
+              </p>
+              <div class="quick-bookmarks" style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;align-items:center;">
+                <label class="btn sm file-btn" style="cursor:pointer;background:var(--accent,#ff8fab);color:#121826;font-weight:bold;padding:10px 20px;border-radius:8px;margin:0;">
+                  📁 Upload Video / Doc
+                  <input type="file" id="filmtvFileEmpty" accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,.mkv,.m4v,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" hidden />
+                </label>
+              </div>
+            </div>
+
+            <div id="filmtvIframeContainer" style="width:100%;height:100%;display:none;"></div>
+
+            <!-- Floating Fullscreen Mini Chat Overlay -->
+            <div id="fullscreenChatOverlay" class="fullscreen-chat-overlay hidden">
+              <div class="fullscreen-chat-header">
+                <span>💬 Mini Chat Overlay</span>
+                <button type="button" id="btnCloseFullscreenChat" class="btn sm ghost">✕</button>
+              </div>
+              <div id="fullscreenChatMessages" class="fullscreen-chat-messages"></div>
+              <div class="fullscreen-chat-input-row">
+                <input type="text" id="fullscreenChatInput" placeholder="Quick message..." />
+                <button type="button" id="btnSendFullscreenChat" class="btn sm">Send</button>
+              </div>
+            </div>
+            <section id="filmtvDocumentViewer" class="filmtv-document-viewer" aria-label="Shared PDF document" hidden>
+              <div class="filmtv-document-toolbar" role="toolbar" aria-label="Document annotations">
+                <div class="filmtv-document-tools">
+                  <button type="button" class="btn sm ghost" id="filmtvHighlightMode"
+                    aria-pressed="false">Highlight</button>
+                  <button type="button" class="btn sm ghost" id="filmtvUnderlineMode"
+                    aria-pressed="false">Underline</button>
+                  <label for="filmtvAnnotationColor">Color</label>
+                  <select id="filmtvAnnotationColor" aria-label="Annotation color">
+                    <option value="yellow">Yellow</option>
+                    <option value="green">Green</option>
+                    <option value="blue">Blue</option>
+                    <option value="pink">Pink</option>
+                  </select>
+                  <button type="button" class="btn sm ghost" id="filmtvClearAnnotations">Clear marks</button>
+                </div>
+                <div class="filmtv-document-pages">
+                  <button type="button" class="btn sm ghost" id="filmtvPreviousPage" aria-label="Previous page"
+                    disabled>Previous</button>
+                  <span id="filmtvPageLabel" aria-live="polite">Page 0 / 0</span>
+                  <button type="button" class="btn sm ghost" id="filmtvNextPage" aria-label="Next page"
+                    disabled>Next</button>
+                </div>
+              </div>
+              <div id="filmtvPdfViewport" class="filmtv-pdf-viewport">
+                <div id="filmtvPdfPage" class="filmtv-pdf-page">
+                  <canvas id="filmtvPdfCanvas" aria-label="PDF page"></canvas>
+                  <div id="filmtvAnnotationLayer" class="filmtv-annotation-layer"></div>
+                </div>
+                <p id="filmtvPdfStatus" class="filmtv-pdf-status" role="status"></p>
+              </div>
+            </section>
+          </div>
+
+          <div class="filmtv-dock" style="background:rgba(18,24,38,0.98);padding:10px 14px;border-top:1px solid var(--border-soft);">
+            <div class="filmtv-dock-row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <div style="flex:1;display:flex;gap:6px;min-width:220px;">
+                <input type="url" id="filmtvUrl" placeholder="YouTube video or direct media URL..." style="flex:1;padding:8px 12px;border-radius:8px;border:1px solid var(--border-soft);background:rgba(0,0,0,0.4);color:#fff;font-size:0.85rem;" />
+                <button type="button" class="btn sm" id="btnFilmTVLoad" style="background:var(--accent,#ff8fab);color:#121826;font-weight:bold;">🚀 Share Link</button>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <label class="btn sm ghost file-btn" style="cursor:pointer;margin:0;">
+                  📁 Upload File
+                  <input type="file" id="filmtvFile"
+                    accept="video/mp4,video/webm,video/ogg,video/quicktime,.mp4,.webm,.ogg,.mov,.mkv,.m4v,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
+                    hidden />
+                </label>
+                <input type="text" id="filmtvTitleInput" maxlength="256" placeholder="Title (optional)" style="width:120px;padding:6px 10px;border-radius:8px;border:1px solid var(--border-soft);background:rgba(0,0,0,0.4);color:#fff;font-size:0.82rem;" />
+                <button type="button" class="btn sm ghost" id="btnFilmTVClear" title="Clear player">🔄 Clear</button>
+              </div>
+            </div>
+            <p class="err" id="filmtvError" style="margin:4px 0 0;font-size:0.8rem;color:#ff4d4d;"></p>
+          </div>
+        </section>
+
+        <div id="appMain">
+          <div id="messages" aria-live="polite"></div>
+          <div class="typing" id="typing"></div>
+
+          <!-- WhatsApp Quoted Reply Preview Bar -->
+          <div id="quotedReplyBar" class="wa-quoted-reply-bar hidden">
+            <div class="wa-quoted-border"></div>
+            <div class="wa-quoted-content">
+              <strong id="quotedReplySender">Replying to Partner</strong>
+              <p id="quotedReplyText">Quoted message snippet...</p>
+            </div>
+            <button type="button" id="btnCancelQuotedReply" class="btn sm ghost">✕</button>
+          </div>
+
+          <!-- WhatsApp Emoji & Reaction Popover -->
+          <div id="emojiPickerPopover" class="wa-emoji-popover hidden">
+            <div class="wa-emoji-grid">
+              <span class="emoji-opt">❤️</span>
+              <span class="emoji-opt">👍</span>
+              <span class="emoji-opt">😂</span>
+              <span class="emoji-opt">😮</span>
+              <span class="emoji-opt">😢</span>
+              <span class="emoji-opt">🙏</span>
+              <span class="emoji-opt">🔥</span>
+              <span class="emoji-opt">🎉</span>
+              <span class="emoji-opt">😍</span>
+              <span class="emoji-opt">👏</span>
+            </div>
+          </div>
+
+          <!-- WhatsApp Cloned Single-Row Input Bar -->
+          <div class="composer wa-composer">
+            <div class="wa-composer-left">
+              <button type="button" class="btn icon ghost" id="btnEmojiToggle" title="Emoji / Reaction">😊</button>
+              <label class="btn icon ghost" title="Attach Photo / Document" style="cursor:pointer;margin:0;">
+                📎
+                <input type="file" id="photoInput" accept="image/*" hidden />
+              </label>
+            </div>
+
+            <textarea id="composerInput" rows="1" placeholder="Type a message..." maxlength="4000"></textarea>
+
+            <div class="wa-composer-right">
+              <select id="ttlSelect" title="Disappearing Timer" class="wa-ttl-select">
+                <option value="0">⏱ Off</option>
+                <option value="300">⏱ 5 min</option>
+                <option value="3600">⏱ 1 hr</option>
+                <option value="86400">⏱ 24 hrs</option>
+              </select>
+              <button type="button" class="btn icon ghost" id="btnVoice" title="Hold to record voice note">🎤</button>
+              <button type="button" class="btn icon" id="btnSend" title="Send">➤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="overlay" id="settingsModal">
+    <div class="modal">
+      <h3>Profile DP & Room Settings</h3>
+
+      <div class="settings-dp-section" style="display:flex;align-items:center;gap:16px;margin:14px 0;">
+        <img id="settingsAvatarPreview" src="/api/profile/avatar" alt="DP Preview" style="width:64px;height:64px;border-radius:50%;object-fit:cover;border:2px solid var(--accent, #ff8fab);" />
+        <div>
+          <label for="avatarFileInput" class="btn sm ghost" style="cursor:pointer;">📷 Change Profile DP</label>
+          <input type="file" id="avatarFileInput" accept="image/*" style="display:none;" />
+          <p class="hint" style="margin:4px 0 0;font-size:0.75rem;">JPG, PNG or WEBP avatar</p>
+        </div>
+      </div>
+
+      <label>Your Display Name</label>
+      <input type="text" id="settingsName" maxlength="64" />
+
+      <label style="margin-top:12px;display:block;">Custom Room Title</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="settingsRoomName" maxlength="128" placeholder="e.g. Ipsita & Sathi's Room" />
+        <button type="button" class="btn sm" id="btnSaveRoomName">Save Title</button>
+      </div>
+
+      <label style="margin-top:14px;display:block;">Background Notifications</label>
+      <button type="button" class="btn ghost sm block" id="btnEnableNotifications" style="text-align:left;margin-top:4px;">
+        🔔 Enable Background Notifications
+      </button>
+
+      <label style="display:flex;align-items:center;gap:10px;margin-top:14px;cursor:pointer;">
+        <input type="checkbox" id="toggleFloatingWidget" style="width:18px;height:18px;" />
+        <span>Home Screen Floating Window</span>
+      </label>
+
+      <div class="modal-actions" style="margin-top:16px;">
+        <button type="button" class="btn" id="btnSaveName">Save Name</button>
+        <button type="button" class="btn ghost" id="btnLogout" title="Revoke this device session">Log out</button>
+        <button type="button" class="btn ghost" data-close="settingsModal">Close</button>
+      </div>
+      <p class="hint">Export / download chat history is permanently disabled. Log out revokes your session token immediately.</p>
+    </div>
+  </div>
+
+  <!-- Theme with Extended Color Options -->
+  <div class="overlay" id="themeModal">
+    <div class="modal">
+      <h3>Theme & Color Options</h3>
+      <div class="theme-grid">
+        <div class="theme-swatch active" data-theme="blush" style="background:linear-gradient(135deg,#3a1528,#ff4d7a);"
+          title="Blush"></div>
+        <div class="theme-swatch" data-theme="midnight" style="background:linear-gradient(135deg,#1a2040,#7aa2ff);"
+          title="Midnight"></div>
+        <div class="theme-swatch" data-theme="forest" style="background:linear-gradient(135deg,#1a3324,#6bcb77);"
+          title="Forest"></div>
+        <div class="theme-swatch" data-theme="sand" style="background:linear-gradient(135deg,#3d3224,#e8b86d);"
+          title="Sand"></div>
+        <div class="theme-swatch" data-theme="lavender" style="background:linear-gradient(135deg,#2a1a40,#c9a0ff);"
+          title="Lavender"></div>
+        <!-- New Color Options Added -->
+        <div class="theme-swatch" data-theme="crimson" style="background:linear-gradient(135deg,#401a1a,#ff6b6b);"
+          title="Crimson Red"></div>
+        <div class="theme-swatch" data-theme="ocean" style="background:linear-gradient(135deg,#1a3a40,#4dc9ff);"
+          title="Ocean Blue"></div>
+        <div class="theme-swatch" data-theme="emerald" style="background:linear-gradient(135deg,#1a4031,#38ef7d);"
+          title="Emerald Glow"></div>
+        <div class="theme-swatch" data-theme="cyberpunk" style="background:linear-gradient(135deg,#2d1a40,#f35588);"
+          title="Cyberpunk Neon"></div>
+      </div>
+      <label style="margin-top:14px;">Upload from gallery</label>
+      <input type="file" id="themeFile" accept="image/*" />
+      <label style="margin-top:14px;">Image Search</label>
+      <div style="display:flex;gap:8px;">
+        <input type="text" id="themeSearchInput" placeholder="e.g. night sky, forest, sunset" style="flex:1;" />
+        <button type="button" class="btn" id="btnThemeSearch">Search</button>
+      </div>
+      <div id="themeSearchResults" class="search-grid"></div>
+
+      <label style="margin-top:14px;">Wallpaper Opacity</label>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <input type="range" id="themeOpacity" min="0" max="100" value="92" style="flex:1;" />
+        <span id="themeOpacityVal">92%</span>
+      </div>
+
+      <p class="err" id="themeError"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="themeModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Doodle -->
+  <div class="overlay" id="doodleModal">
+    <div class="modal">
+      <h3>Secret doodle board</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;align-items:center;">
+        <input type="color" id="doodleColor" value="#e91e63" />
+        <input type="range" id="doodleWidth" min="1" max="24" value="3" />
+        <button type="button" class="btn ghost" id="btnDoodlePen">Pen</button>
+        <button type="button" class="btn ghost" id="btnDoodleEraser">Eraser</button>
+        <button type="button" class="btn ghost" id="btnDoodleClear">Clear</button>
+        <button type="button" class="btn" id="btnDoodleSave">Save locally</button>
+      </div>
+      <canvas id="doodleCanvas" width="800" height="360"></canvas>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="doodleModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Instagram sync -->
+  <div class="overlay" id="igModal">
+    <div class="modal">
+      <h3>Shared Instagram view</h3>
+      <p class="hint">Paste a Reel or post URL to co-watch in sync. Optionally store an encrypted session note for
+        yourselves (never sent to third parties by this app).</p>
+      <label>Instagram URL (reel / post)</label>
+      <input type="url" id="igUrl" placeholder="https://www.instagram.com/reel/..." />
+      <div class="modal-actions">
+        <button type="button" class="btn" id="btnIgSync">Sync to both</button>
+      </div>
+      <div id="igFrameWrap" style="margin-top:12px;">
+        <div id="igPlaceholder">No URL synced yet</div>
+        <iframe id="igFrame" title="Instagram sync" sandbox="allow-scripts allow-popups allow-forms"
+          allow="display-capture; camera; microphone; fullscreen; clipboard-read; clipboard-write"
+          referrerpolicy="no-referrer" loading="lazy"></iframe>
+      </div>
+      <label style="margin-top:12px;">Encrypted session note (optional)</label>
+      <textarea id="igSession" rows="3"
+        style="width:100%;padding:10px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid rgba(255,143,171,.3);color:inherit;"
+        placeholder="Paste session cookies / notes — stored encrypted with your room key"></textarea>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" id="btnIgSaveSession">Save encrypted</button>
+        <button type="button" class="btn ghost" id="btnIgLoadSession">Load</button>
+        <button type="button" class="btn ghost" data-close="igModal">Close</button>
+      </div>
+      <p class="err" id="igSessionStatus" style="color:var(--muted);"></p>
+    </div>
+  </div>
+
+  <!-- Couple Games Section -->
+  <div class="overlay" id="gamesModal">
+    <div class="modal modal-lg">
+      <div class="games-header">
+        <h3>🎮 Couple Games Hub</h3>
+        <p class="hint">Play together in real time, take turns, or launch co-op sessions!</p>
+      </div>
+
+      <div class="game-tabs" style="display:flex;gap:8px;margin:12px 0;flex-wrap:wrap;">
+        <button type="button" class="btn sm ghost game-tab-btn active" data-tab="hub">Game Hub</button>
+        <button type="button" class="btn sm ghost game-tab-btn" data-tab="overcooked">🍳 Overcooked! Co-Op</button>
+        <button type="button" class="btn sm ghost game-tab-btn" data-tab="candycrush">🍬 Candy Crush</button>
+        <button type="button" class="btn sm ghost game-tab-btn" data-tab="boardgames">🎲 Board Games</button>
+      </div>
+
+      <!-- Tab 1: Game Hub -->
+      <div id="gameView-hub" class="game-view">
+        <div class="games-grid">
+          <div class="game-card" onclick="CoupleGames.showGameView('overcooked')">
+            <div class="game-card-icon">🍳</div>
+            <h4>Overcooked! Kitchen Challenge</h4>
+            <p>Collaborate in real time to chop, grill, assemble, and serve burger & salad orders!</p>
+            <span class="game-badge">Live Co-Op</span>
+          </div>
+
+          <div class="game-card" onclick="CoupleGames.showGameView('candycrush')">
+            <div class="game-card-icon">🍬</div>
+            <h4>Candy Crush Match-3</h4>
+            <p>Match sweet candies, build combo streaks, and compete for high scores with partner!</p>
+            <span class="game-badge">Match 3</span>
+          </div>
+
+          <div class="game-card" onclick="CoupleGames.showGameView('boardgames')">
+            <div class="game-card-icon">🎲</div>
+            <h4>Classic Board Games</h4>
+            <p>Ludo, Uno & Monopoly web variants with quick-join room link sharing.</p>
+            <span class="game-badge">Board Games</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 2: Overcooked Mini-Game -->
+      <div id="gameView-overcooked" class="game-view hidden">
+        <div class="game-kitchen-wrap" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <div class="kitchen-stats-bar" style="display:flex;gap:16px;font-size:0.9rem;">
+            <span>⏱️ Time: <strong id="ocTimeDisplay">120s</strong></span>
+            <span>⭐ Score: <strong id="ocScoreDisplay">0</strong></span>
+            <span>📋 Order: <strong id="ocOrderDisplay">Cheeseburger</strong></span>
+          </div>
+
+          <canvas id="overcookedCanvas" width="400" height="140" style="border-radius:12px;border:1px solid rgba(255,143,171,0.3);max-width:100%;"></canvas>
+
+          <div class="kitchen-controls" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;">
+            <button type="button" class="btn sm" id="btnOcChop">🔪 Chop Lettuce</button>
+            <button type="button" class="btn sm" id="btnOcGrill">🔥 Grill Patty</button>
+            <button type="button" class="btn sm" id="btnOcServe">🍔 Serve Dish</button>
+            <button type="button" class="btn sm ghost" id="btnOcReset">🔄 Reset Kitchen</button>
+          </div>
+          <p class="hint">Plate Assembly: <strong id="ocAssemblyDisplay">Bun</strong></p>
+        </div>
+      </div>
+
+      <!-- Tab 3: Candy Crush Match-3 -->
+      <div id="gameView-candycrush" class="game-view hidden">
+        <div class="candy-crush-wrap" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+          <div class="kitchen-stats-bar" style="display:flex;gap:16px;align-items:center;">
+            <span>🍬 Score: <strong id="ccScoreDisplay">0</strong></span>
+            <button type="button" class="btn sm ghost" id="btnCcReset">🔄 New Board</button>
+          </div>
+          <canvas id="candyCrushCanvas" width="300" height="300" style="border-radius:12px;border:1px solid rgba(255,143,171,0.3);max-width:100%;"></canvas>
+          <p class="hint">Click adjacent candies to swap and match 3 in a row!</p>
+        </div>
+      </div>
+
+      <!-- Tab 4: Board Games -->
+      <div id="gameView-boardgames" class="game-view hidden">
+        <div class="board-games-wrap">
+          <h4>Co-Op Room Share</h4>
+          <p class="hint">Paste your Ludo, Uno, or Monopoly room code/link to send directly to your partner's chat!</p>
+          <div class="widget-input-row" style="margin-top:10px;">
+            <input type="text" id="gameCodeInput" placeholder="Paste Ludo / Uno room code or link..." />
+            <button type="button" class="btn sm" id="btnShareGameCode">Share to Chat</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:16px;">
+        <button type="button" class="btn ghost" data-close="gamesModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Gallery / Vault -->
+  <div class="overlay" id="galleryModal">
+    <div class="modal modal-lg">
+      <h3>Room Vault</h3>
+      <p class="hint">All shared photos and voice notes in this room. End-to-end encrypted.</p>
+      <div id="galleryGrid" class="gallery-grid">
+        <!-- Loaded dynamically -->
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn ghost" data-close="galleryModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="mediaZoomModal" class="overlay">
+    <div class="modal modal-lg zoom-modal">
+      <div class="zoom-controls">
+        <button type="button" class="btn sm ghost" id="btnZoomIn">+</button>
+        <button type="button" class="btn sm ghost" id="btnZoomOut">-</button>
+        <button type="button" class="btn sm ghost" id="btnZoomReset">Reset</button>
+        <button type="button" class="btn sm ghost" data-close="mediaZoomModal">Close</button>
+      </div>
+      <div class="zoom-viewport">
+        <img id="zoomImage" src="" alt="Zoomed view" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Stable cdnjs Socket.IO Client -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="/static/js/crypto.js?v=2.1"></script>
+  <script src="/static/js/offline.js?v=2.1"></script>
+  <script src="/static/js/privacy.js?v=2.1"></script>
+  <script src="/static/js/doodle.js?v=2.2"></script>
+  <script src="/static/js/pdf-viewer.js?v=1.1"></script>
+  <script src="/static/js/filmtv.js?v=2.5"></script>
+  <script src="/static/js/widget.js?v=1.0"></script>
+  <script src="/static/js/games.js?v=1.0"></script>
+  <script src="/static/js/app.js?v=3.1"></script>
+
+</body>
+
+</html>
