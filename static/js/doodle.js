@@ -1,7 +1,7 @@
 /** Shared realtime doodle board. */
 const DoodleBoard = (() => {
   let canvas, ctx, drawing = false, last = null;
-  let color = "#e91e63";
+  let color = "#c9a24b";
   let width = 3;
   let tool = "pen";
   let emitStroke = null;

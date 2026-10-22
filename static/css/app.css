@@ -1,34 +1,41 @@
-/*! Ipsita-Sathi — romantic private room + FilmTV */
+/*! Sathi — Onyx & Gold Private Room Design System */
 :root {
-  --bg-1: #140a10;
-  --bg-2: #2a121c;
-  --bg-3: #3d1828;
-  --ink: #fff0f5;
-  --muted: #d4a0b0;
-  --accent: #ff5c8a;
-  --accent-2: #ff9eb5;
-  --accent-warm: #ffb38a;
-  --glass: rgba(36, 14, 24, 0.78);
-  --glass-strong: rgba(22, 8, 14, 0.88);
-  --bubble-me: linear-gradient(135deg, #ff4d7a, #ff7a9a);
-  --bubble-them: rgba(255, 255, 255, 0.1);
-  --danger: #ff7b7b;
-  --ok: #7dcea0;
-  --radius: 20px;
-  --radius-sm: 12px;
+  --bg-1: #0a0908;
+  --bg-2: #121110;
+  --bg-3: #1a1816;
+  --bg-card: #161412;
+  --ink: #efe9da;
+  --muted: #8f8878;
+  --accent: #c9a24b;
+  --accent-2: #ecd593;
+  --accent-dark: #9a7428;
+  --gold-gradient: linear-gradient(135deg, #ecd593 0%, #c9a24b 50%, #9a7428 100%);
+  --gold-gradient-hover: linear-gradient(135deg, #f7e6b5 0%, #d8b25a 50%, #aa8335 100%);
+  --gold-border: rgba(201, 162, 75, 0.22);
+  --gold-border-strong: rgba(201, 162, 75, 0.45);
+  --gold-glow: 0 0 25px rgba(201, 162, 75, 0.18);
+  --glass: rgba(18, 17, 16, 0.88);
+  --glass-strong: rgba(10, 9, 8, 0.95);
+  --bubble-me: linear-gradient(135deg, #ecd593 0%, #c9a24b 100%);
+  --bubble-them: #161412;
+  --danger: #e54d4d;
+  --ok: #48bb78;
+  --radius: 16px;
+  --radius-sm: 10px;
   --font-display: "Cormorant Garamond", Georgia, serif;
-  --font-body: "Nunito", system-ui, sans-serif;
+  --font-body: "Manrope", system-ui, -apple-system, sans-serif;
   --theme-image: none;
-  --glow: 0 0 40px rgba(255, 92, 138, 0.22);
-  --border-soft: rgba(255, 158, 181, 0.28);
+  --glow: 0 0 35px rgba(201, 162, 75, 0.18);
+  --border-soft: rgba(201, 162, 75, 0.22);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --overlay-opacity: 0.92;
+  --overlay-opacity: 0.94;
 }
 
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -37,14 +44,15 @@ body {
   font-family: var(--font-body);
   color: var(--ink);
   background:
-    linear-gradient(165deg, rgba(20, 10, 16, var(--overlay-opacity)), rgba(42, 18, 28, var(--overlay-opacity))),
+    linear-gradient(165deg, rgba(10, 9, 8, var(--overlay-opacity)), rgba(18, 17, 16, var(--overlay-opacity))),
     var(--theme-image),
-    radial-gradient(ellipse at 15% 0%, rgba(255, 92, 138, 0.28) 0%, transparent 45%),
-    radial-gradient(ellipse at 90% 80%, rgba(255, 179, 138, 0.14) 0%, transparent 40%),
+    radial-gradient(ellipse at 15% 0%, rgba(201, 162, 75, 0.12) 0%, transparent 50%),
+    radial-gradient(ellipse at 85% 85%, rgba(236, 213, 147, 0.08) 0%, transparent 45%),
     linear-gradient(165deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
   background-size: cover;
   background-position: center;
   background-attachment: fixed;
+  overflow-x: hidden;
 }
 
 .ambient {
@@ -1802,15 +1810,16 @@ body.pdf-document-open.messages-open #messages {
   }
 }
 
-/* ─── WhatsApp Cloned Chat Styling ─── */
+/* ─── Onyx & Gold Header Styling ─── */
 .wa-topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 14px;
-  background: rgba(18, 24, 38, 0.95);
-  border-bottom: 1px solid var(--border-soft);
-  backdrop-filter: blur(12px);
+  padding: 10px 16px;
+  background: var(--glass-strong);
+  border-bottom: 1px solid var(--gold-border);
+  backdrop-filter: blur(16px);
+  z-index: 10;
 }
 
 .wa-header-user {
@@ -1820,58 +1829,131 @@ body.pdf-document-open.messages-open #messages {
 }
 
 .wa-avatar-header {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   object-fit: cover;
-  border: 2px solid var(--accent, #ff8fab);
-  background: #1e293b;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 12px rgba(201, 162, 75, 0.25);
+  background: var(--bg-card);
 }
 
 .wa-room-title {
-  font-size: 1.05rem;
-  font-weight: 700;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
   margin: 0;
-  color: var(--accent, #ff8fab);
+  color: var(--accent-2);
+  letter-spacing: 0.01em;
 }
 
 .wa-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
 .icon-btn {
-  padding: 6px 10px;
-  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
+  background: rgba(201, 162, 75, 0.08);
+  color: var(--accent-2);
+  border: 1px solid var(--gold-border);
+  cursor: pointer;
+  transition: all 0.2s var(--ease);
 }
 
-/* WhatsApp Messages Container & Bubbles */
+.icon-btn:hover {
+  background: rgba(201, 162, 75, 0.2);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* Header Dropdown Menu */
+.header-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 200px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--gold-border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.7), var(--gold-glow);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.header-dropdown-menu.hidden {
+  display: none !important;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.18s var(--ease);
+}
+
+.dropdown-item:hover {
+  background: rgba(201, 162, 75, 0.15);
+  color: var(--accent-2);
+}
+
+.dropdown-item.danger {
+  color: var(--danger);
+}
+
+.dropdown-item.danger:hover {
+  background: rgba(229, 77, 77, 0.2);
+  color: #fff;
+}
+
+/* ─── Onyx & Gold Message Bubbles ─── */
 .msg {
   display: flex;
   flex-direction: column;
   max-width: 82%;
   margin: 6px 0;
-  padding: 8px 12px 6px;
-  border-radius: 12px;
+  padding: 10px 14px 8px;
+  border-radius: 14px;
   position: relative;
   word-break: break-word;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-  font-size: 0.92rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  font-size: 0.93rem;
+  line-height: 1.45;
 }
 
 .msg.me {
   align-self: flex-end;
-  background: #005c4b;
-  color: #e9edef;
+  background: var(--bubble-me);
+  color: #0a0908;
   border-bottom-right-radius: 2px;
+  font-weight: 500;
 }
 
 .msg.them {
   align-self: flex-start;
-  background: #202c33;
-  color: #e9edef;
+  background: var(--bg-card);
+  color: var(--ink);
+  border: 1px solid var(--gold-border);
   border-bottom-left-radius: 2px;
 }
 
@@ -1887,9 +1969,36 @@ body.pdf-document-open.messages-open #messages {
   height: 22px;
   border-radius: 50%;
   object-fit: cover;
+  border: 1px solid var(--accent);
 }
 
 .msg-sender {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.msg.me .msg-sender {
+  color: #3d2f10;
+}
+
+.msg-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
+.msg.me .msg-footer {
+  color: #3d2f10;
+}
+
+.msg.them .msg-footer {
+  color: var(--muted);
+}
   font-size: 0.78rem;
   font-weight: 700;
   color: #ff8fab;

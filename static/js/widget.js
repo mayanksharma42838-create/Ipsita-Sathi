@@ -11,7 +11,7 @@
   let canvas = null;
   let ctx = null;
   let isDrawing = false;
-  let drawColor = "#ff8fab";
+  let drawColor = "#c9a24b";
 
   function initWidget() {
     canvas = document.getElementById("widgetCanvas");
@@ -255,18 +255,18 @@
 
         const style = document.createElement("style");
         style.textContent = `
-          body { margin:0; padding:12px; background:#121826; color:#fff; font-family:sans-serif; display:flex; flex-direction:column; height:100vh; box-sizing:border-box; }
-          .title { font-size:12px; color:#ff8fab; font-weight:bold; margin-bottom:6px; }
+          body { margin:0; padding:12px; background:#0a0908; color:#efe9da; font-family:sans-serif; display:flex; flex-direction:column; height:100vh; box-sizing:border-box; }
+          .title { font-size:12px; color:#ecd593; font-weight:bold; margin-bottom:6px; }
           .preview { flex:1; background:rgba(255,255,255,0.08); border-radius:8px; padding:10px; font-size:13px; word-break:break-word; overflow:auto; }
           .row { display:flex; gap:6px; margin-top:8px; }
-          input { flex:1; padding:6px; border-radius:6px; border:1px solid #ff8fab; background:rgba(0,0,0,0.4); color:#fff; }
-          button { padding:6px 12px; border-radius:6px; border:none; background:#ff8fab; color:#121826; font-weight:bold; cursor:pointer; }
+          input { flex:1; padding:6px; border-radius:6px; border:1px solid #c9a24b; background:rgba(0,0,0,0.5); color:#fff; }
+          button { padding:6px 12px; border-radius:6px; border:none; background:linear-gradient(135deg, #ecd593, #c9a24b); color:#0a0908; font-weight:bold; cursor:pointer; }
         `;
         pipWindow.document.head.appendChild(style);
 
         const title = pipWindow.document.createElement("div");
         title.className = "title";
-        title.textContent = "✨ Ipsita-Sathi Floating Home Screen";
+        title.textContent = "✨ Sathi Floating Home Screen";
 
         const preview = pipWindow.document.createElement("div");
         preview.className = "preview";

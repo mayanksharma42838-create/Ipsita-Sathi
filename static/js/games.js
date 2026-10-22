@@ -314,7 +314,7 @@
     const cellH = h / CC_ROWS;
 
     ccCtx.clearRect(0, 0, w, h);
-    ccCtx.fillStyle = "#0f172a";
+    ccCtx.fillStyle = "#0a0908";
     ccCtx.fillRect(0, 0, w, h);
 
     for (let r = 0; r < CC_ROWS; r++) {
@@ -322,11 +322,11 @@
         const x = c * cellW;
         const y = r * cellH;
 
-        ccCtx.strokeStyle = "rgba(255, 143, 171, 0.15)";
+        ccCtx.strokeStyle = "rgba(201, 162, 75, 0.25)";
         ccCtx.strokeRect(x, y, cellW, cellH);
 
         if (ccSelected && ccSelected.r === r && ccSelected.c === c) {
-          ccCtx.fillStyle = "rgba(255, 143, 171, 0.3)";
+          ccCtx.fillStyle = "rgba(201, 162, 75, 0.35)";
           ccCtx.fillRect(x + 2, y + 2, cellW - 4, cellH - 4);
         }
 

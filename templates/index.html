@@ -7,14 +7,14 @@
   <meta name="color-scheme" content="dark" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta http-equiv="Cache-Control" content="no-store" />
-  <title>Ipsita-Sathi</title>
+  <title>Sathi — Private Room</title>
   <link rel="icon" href="data:;base64,iVBORw0KGgo=" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Nunito:wght@400;600;700&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Manrope:wght@400;500;600;700&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet" href="/static/css/app.css?v=3.1" />
+  <link rel="stylesheet" href="/static/css/app.css?v=4.0" />
   <style>
     /* Custom inline style for adjustable resizable panes in FilmTV mode */
     #roomSplit {
@@ -43,7 +43,9 @@
 
   <!-- WhatsApp-Style Background Notification Banner -->
   <div id="waNotificationBanner" class="wa-notification-banner">
-    <div class="wa-notify-avatar">💬</div>
+    <div class="wa-notify-avatar">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    </div>
     <div class="wa-notify-content">
       <strong id="waNotifySender">Partner</strong>
       <p id="waNotifyMessage">New message received</p>
@@ -53,7 +55,7 @@
   <!-- Home Screen Floating Extension Widget Overlay -->
   <div id="floatingWidgetOverlay" class="floating-widget-container hidden">
     <div class="floating-widget-header">
-      <span class="widget-title">✨ Ipsita-Sathi Floating Sync</span>
+      <span class="widget-title">✨ Sathi Floating Sync</span>
       <div class="widget-controls">
         <button id="btnWidgetPip" type="button" class="btn sm ghost" title="Pop out floating window over home screen">📌 PiP</button>
         <button id="btnWidgetClose" type="button" class="btn sm ghost" title="Close">✖</button>
@@ -111,7 +113,7 @@
     <div class="offline-banner" id="offlineBanner">You're offline — messages will sync when connection returns.</div>
 
     <div id="authView">
-      <div class="brand">Ipsita-Sathi</div>
+      <div class="brand">Sathi</div>
       <p class="tagline">Your private room, ready whenever you return.</p>
       <div class="panel">
         <form id="loginForm" novalidate>
@@ -219,9 +221,9 @@
           <div class="filmtv-player-wrap">
             <video id="filmtvVideo" playsinline controls controlslist="nodownload" style="display:none;"></video>
             
-            <div id="filmtvEmpty" class="filmtv-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 20px;text-align:center;background:rgba(18,24,38,0.7);border-radius:12px;">
-              <span class="heart-mark" aria-hidden="true" style="font-size:2.2rem;color:var(--accent,#ff8fab);margin-bottom:8px;">♡</span>
-              <h4 style="margin:0 0 6px 0;color:var(--text, #f0f4f8);font-size:1.15rem;">FilmTV Watch Party</h4>
+            <div id="filmtvEmpty" class="filmtv-empty" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:36px 20px;text-align:center;background:rgba(18,17,16,0.85);border-radius:12px;">
+              <span class="heart-mark" aria-hidden="true" style="font-size:2.2rem;color:var(--gold-light,#ecd593);margin-bottom:8px;">✦</span>
+              <h4 style="margin:0 0 6px 0;color:var(--ink, #efe9da);font-size:1.15rem;font-family:var(--font-display);">Sathi Watch Party</h4>
               <p style="margin:0 0 18px 0;color:var(--muted);font-size:0.88rem;max-width:460px;line-height:1.4;">
                 Watch embeddable YouTube videos or uploaded media together. For streaming services that block in-app playback, use Share Screen / Tab.
               </p>
@@ -567,7 +569,7 @@
             <span>🍬 Score: <strong id="ccScoreDisplay">0</strong></span>
             <button type="button" class="btn sm ghost" id="btnCcReset">🔄 New Board</button>
           </div>
-          <canvas id="candyCrushCanvas" width="300" height="300" style="border-radius:12px;border:1px solid rgba(255,143,171,0.3);max-width:100%;"></canvas>
+          <canvas id="candyCrushCanvas" width="300" height="300" style="border-radius:12px;border:1px solid var(--gold-border,#c9a24b);max-width:100%;"></canvas>
           <p class="hint">Click adjacent candies to swap and match 3 in a row!</p>
         </div>
       </div>

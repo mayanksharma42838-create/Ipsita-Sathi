@@ -362,8 +362,8 @@ const App = (() => {
               if (!silent) alert("Native mobile notifications enabled!");
               try {
                 await localNotifs.createChannel({
-                  id: "ipsita_messages",
-                  name: "Ipsita-Sathi Messages",
+                  id: "sathi_messages",
+                  name: "Sathi Messages",
                   description: "Room notifications for messages and sync events",
                   importance: 5,
                   visibility: 1,
@@ -435,7 +435,7 @@ const App = (() => {
                 body: text || "New message received",
                 id: Math.floor(Math.random() * 100000) + 1,
                 schedule: { at: new Date(Date.now() + 100) },
-                channelId: "ipsita_messages",
+                channelId: "sathi_messages",
               },
             ],
           });
@@ -1688,15 +1688,36 @@ const App = (() => {
       window.focus();
     });
 
+    $("#btnHeaderMenu")?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      $("#headerDropdownMenu")?.classList.toggle("hidden");
+    });
+    document.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+    });
+
     $("#btnSettings")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
       const settingsName = $("#settingsName");
       if (settingsName) settingsName.value = state.displayName || "";
       openModal("settingsModal");
     });
 
-    $("#btnGames")?.addEventListener("click", () => openModal("gamesModal"));
-    $("#btnTheme")?.addEventListener("click", () => openModal("themeModal"));
-    $("#btnDoodle")?.addEventListener("click", () => openModal("doodleModal"));
+    $("#btnGames")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+      openModal("gamesModal");
+    });
+    $("#btnTheme")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+      openModal("themeModal");
+    });
+    $("#btnDoodle")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+      openModal("doodleModal");
+    });
+    $("#btnLogoutTop")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+    });
     $("#btnIg")?.addEventListener("click", () => openModal("igModal"));
     $("#btnGallery")?.addEventListener("click", () => {
       openModal("galleryModal");
@@ -1779,7 +1800,7 @@ const App = (() => {
         return;
       }
 
-      partnerLaunchWindow = window.open("about:blank", "ipsitaSathiPartnerLaunch");
+      partnerLaunchWindow = window.open("about:blank", "sathiPartnerLaunch");
       if (!partnerLaunchWindow) {
         if (status) status.textContent = "Popup blocked. Allow this site to open a tab, then enable auto-open again.";
         return;

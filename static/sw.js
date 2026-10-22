@@ -11,7 +11,7 @@ self.addEventListener("push", (event) => {
   if (!event.data) return;
   try {
     const data = event.data.json();
-    const title = data.title || "Ipsita-Sathi Message";
+    const title = data.title || "Sathi Message";
     const options = {
       body: data.body || "New message received",
       icon: data.icon || "/static/icons/icon-192.png",
