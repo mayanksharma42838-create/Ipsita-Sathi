@@ -163,24 +163,29 @@ def login():
     with _join_guard:
         _begin_immediate()
         try:
-            # Match by phone_number, email identifier, or legacy_room_id
+            # Match room by room_name (if provided), phone_number/email, or matching password hash
+            room_name = (data.get("room_name") or data.get("room_id") or data.get("legacy_room_id") or "").strip()
             room = None
-            if phone_number:
-                room = Room.query.filter_by(phone_number=phone_number).first()
-            if not room and id_type == "email":
-                room = Room.query.filter_by(phone_number=norm_id).first()
-            
+            if room_name:
+                room = Room.query.filter_by(room_id=room_name).first()
+
+            if not room:
+                if phone_number:
+                    room = Room.query.filter_by(phone_number=phone_number).first()
+                if not room and id_type == "email":
+                    room = Room.query.filter_by(phone_number=norm_id).first()
+
+            if not room:
+                all_rooms = Room.query.all()
+                for r in all_rooms:
+                    if r.check_password(password):
+                        room = r
+                        break
+
             if room:
                 if not room.check_password(password):
                     db.session.rollback()
                     return jsonify({"error": _GENERIC_AUTH_FAIL}), 403
-            elif legacy_room_id:
-                room = Room.query.filter_by(room_id=legacy_room_id.strip(), phone_number=None).first()
-                if not room or not room.check_password(password):
-                    db.session.rollback()
-                    return jsonify({"error": _GENERIC_AUTH_FAIL}), 403
-                room.phone_number = norm_id
-                db.session.flush()
             else:
                 password_error = validate_password(
                     password, current_app.config["MIN_PASSWORD_LENGTH"]
@@ -188,8 +193,9 @@ def login():
                 if password_error:
                     db.session.rollback()
                     return jsonify({"error": password_error}), 400
+                target_room_id = room_name if room_name else f"account-{secrets.token_urlsafe(12)}"
                 room = Room(
-                    room_id=f"account-{secrets.token_urlsafe(18)}",
+                    room_id=target_room_id,
                     phone_number=norm_id,
                     salt=secrets.token_bytes(16),
                     theme_opacity=0.92,

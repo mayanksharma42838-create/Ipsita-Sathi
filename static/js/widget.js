@@ -10,12 +10,55 @@
   let isWidgetEnabled = false;
   let canvas = null;
   let ctx = null;
+  let isDrawing = false;
+  let drawColor = "#ff8fab";
 
   function initWidget() {
     canvas = document.getElementById("widgetCanvas");
     if (canvas) {
       ctx = canvas.getContext("2d");
-      drawWidgetCanvasPlaceholder("✨ Ipsita-Sathi Sync");
+      clearWidgetCanvas();
+      bindDrawingCanvas();
+    }
+
+    // Tab Switching
+    document.querySelectorAll(".widget-tab").forEach((tab) => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".widget-tab").forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const targetTab = tab.dataset.tab;
+        document.querySelectorAll(".widget-tab-content").forEach((c) => c.classList.add("hidden"));
+        const activeContent = document.getElementById(`widgetTab-${targetTab}`);
+        if (activeContent) activeContent.classList.remove("hidden");
+      });
+    });
+
+    // Color Swatches
+    document.querySelectorAll(".widget-color-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".widget-color-btn").forEach((b) => b.style.border = "none");
+        btn.style.border = "2px solid #fff";
+        drawColor = btn.dataset.color || "#ff8fab";
+      });
+    });
+
+    // Clear & Send Drawing Buttons
+    const btnClearDraw = document.getElementById("btnWidgetClearDraw");
+    if (btnClearDraw) btnClearDraw.addEventListener("click", clearWidgetCanvas);
+
+    const btnSendDraw = document.getElementById("btnWidgetSendDraw");
+    if (btnSendDraw) {
+      btnSendDraw.addEventListener("click", sendWidgetDrawing);
+    }
+
+    // Online Photo Search
+    const btnSearchPhotos = document.getElementById("btnWidgetSearchPhotos");
+    const inputPhotoSearch = document.getElementById("widgetPhotoSearchInput");
+    if (btnSearchPhotos && inputPhotoSearch) {
+      btnSearchPhotos.addEventListener("click", () => searchOnlinePhotos(inputPhotoSearch.value));
+      inputPhotoSearch.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") searchOnlinePhotos(inputPhotoSearch.value);
+      });
     }
 
     const toggle = document.getElementById("toggleFloatingWidget");
@@ -63,16 +106,118 @@
     }
   }
 
-  function drawWidgetCanvasPlaceholder(text, color = "#ff8fab") {
+  function clearWidgetCanvas() {
     if (!ctx || !canvas) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "rgba(18, 24, 38, 0.95)";
+    ctx.fillStyle = "#0d1117";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
 
-    ctx.fillStyle = color;
-    ctx.font = "600 14px Nunito, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  function bindDrawingCanvas() {
+    if (!canvas || !ctx) return;
+
+    const getPos = (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * (canvas.width / rect.width),
+        y: (clientY - rect.top) * (canvas.height / rect.height),
+      };
+    };
+
+    const startDraw = (e) => {
+      isDrawing = true;
+      const pos = getPos(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+      ctx.strokeStyle = drawColor;
+      ctx.lineWidth = 3;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+    };
+
+    const draw = (e) => {
+      if (!isDrawing) return;
+      e.preventDefault();
+      const pos = getPos(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+    };
+
+    const stopDraw = () => {
+      isDrawing = false;
+    };
+
+    canvas.addEventListener("mousedown", startDraw);
+    canvas.addEventListener("mousemove", draw);
+    canvas.addEventListener("mouseup", stopDraw);
+    canvas.addEventListener("mouseleave", stopDraw);
+
+    canvas.addEventListener("touchstart", startDraw, { passive: false });
+    canvas.addEventListener("touchmove", draw, { passive: false });
+    canvas.addEventListener("touchend", stopDraw);
+  }
+
+  function sendWidgetDrawing() {
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+
+    if (window.AppSendMessage) {
+      window.AppSendMessage(`[Drawing Sent]`);
+    }
+
+    const socket = window.appSocket || window.AppSocket;
+    if (socket && socket.connected) {
+      socket.emit("widget_sync", {
+        type: "drawing",
+        content: dataUrl,
+      });
+    }
+
+    const preview = document.getElementById("widgetPreviewText");
+    if (preview) preview.textContent = "🎨 Sent drawing to partner!";
+  }
+
+  async function searchOnlinePhotos(query) {
+    const grid = document.getElementById("widgetPhotoResults");
+    if (!grid) return;
+    const q = (query || "love").trim();
+    grid.innerHTML = '<div style="font-size:11px;color:#ff8fab;grid-column:1/-1;text-align:center;">Searching photos...</div>';
+
+    try {
+      const sampleQueries = [q, `${q} cute`, `${q} aesthetic`, `${q} couple`, `${q} art`, `${q} nature`];
+      grid.innerHTML = "";
+
+      sampleQueries.slice(0, 6).forEach((term, idx) => {
+        const imgUrl = `https://picsum.photos/seed/${encodeURIComponent(q + idx)}/300/300`;
+        const img = document.createElement("img");
+        img.src = imgUrl;
+        img.alt = term;
+        img.style.cssText = "width:100%;height:45px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid rgba(255,143,171,0.3);";
+        img.onclick = () => sendOnlinePhotoToPartner(imgUrl, term);
+        grid.appendChild(img);
+      });
+    } catch (err) {
+      grid.innerHTML = '<div style="font-size:11px;color:#ff4d4d;grid-column:1/-1;text-align:center;">Error searching photos</div>';
+    }
+  }
+
+  function sendOnlinePhotoToPartner(imgUrl, term) {
+    if (window.AppSendMessage) {
+      window.AppSendMessage(`[Photo] ${imgUrl}`);
+    }
+
+    const socket = window.appSocket || window.AppSocket;
+    if (socket && socket.connected) {
+      socket.emit("widget_sync", {
+        type: "photo",
+        content: imgUrl,
+        term: term
+      });
+    }
+
+    const preview = document.getElementById("widgetPreviewText");
+    if (preview) preview.textContent = `🖼️ Sent photo to partner!`;
   }
 
   function toggleWidgetOverlay(show) {
@@ -84,9 +229,12 @@
 
   function sendWidgetUpdate(text) {
     if (!text || !text.trim()) return;
-    drawWidgetCanvasPlaceholder(`Partner: ${text.trim()}`);
     const preview = document.getElementById("widgetPreviewText");
     if (preview) preview.textContent = text.trim();
+
+    if (window.AppSendMessage) {
+      window.AppSendMessage(text.trim());
+    }
 
     const socket = window.appSocket || window.AppSocket;
     if (socket && socket.connected) {
@@ -156,10 +304,17 @@
   function handleIncomingWidgetSync(data) {
     if (!data) return;
     const text = data.content || "New sync update";
-    drawWidgetCanvasPlaceholder(`${data.sender_name || "Partner"}: ${text}`);
 
     const preview = document.getElementById("widgetPreviewText");
-    if (preview) preview.textContent = `${data.sender_name || "Partner"}: ${text}`;
+    if (preview) {
+      if (data.type === "photo") {
+        preview.textContent = `${data.sender_name || "Partner"} sent a photo!`;
+      } else if (data.type === "drawing") {
+        preview.textContent = `${data.sender_name || "Partner"} sent a drawing!`;
+      } else {
+        preview.textContent = `${data.sender_name || "Partner"}: ${text}`;
+      }
+    }
 
     if (pipWindow && pipWindow.document) {
       const pipPreview = pipWindow.document.getElementById("pipPreviewText");

@@ -55,16 +55,55 @@
     <div class="floating-widget-header">
       <span class="widget-title">✨ Ipsita-Sathi Floating Sync</span>
       <div class="widget-controls">
-        <button id="btnWidgetPip" type="button" class="btn sm ghost" title="Pop out floating window">📌 PiP</button>
+        <button id="btnWidgetPip" type="button" class="btn sm ghost" title="Pop out floating window over home screen">📌 PiP</button>
         <button id="btnWidgetClose" type="button" class="btn sm ghost" title="Close">✖</button>
       </div>
     </div>
     <div class="floating-widget-body">
-      <div id="widgetPreviewText" class="widget-text-preview">Connected & Synced</div>
-      <canvas id="widgetCanvas" width="280" height="120"></canvas>
-      <div class="widget-input-row">
-        <input type="text" id="widgetInput" placeholder="Send note to partner..." />
-        <button id="btnWidgetSend" type="button" class="btn sm">Send</button>
+      <!-- Feature Tabs: Text | Draw | Online Photos -->
+      <div class="widget-tabs" style="display:flex;gap:4px;margin-bottom:8px;">
+        <button type="button" class="btn sm ghost widget-tab active" data-tab="text" style="flex:1;padding:4px 8px;font-size:0.75rem;">💬 Text</button>
+        <button type="button" class="btn sm ghost widget-tab" data-tab="draw" style="flex:1;padding:4px 8px;font-size:0.75rem;">🎨 Draw</button>
+        <button type="button" class="btn sm ghost widget-tab" data-tab="photos" style="flex:1;padding:4px 8px;font-size:0.75rem;">🖼️ Photos</button>
+      </div>
+
+      <!-- Tab 1: Text Note -->
+      <div id="widgetTab-text" class="widget-tab-content">
+        <div id="widgetPreviewText" class="widget-text-preview">Connected & Synced</div>
+        <div class="widget-input-row" style="margin-top:8px;">
+          <input type="text" id="widgetInput" placeholder="Send note to partner..." />
+          <button id="btnWidgetSend" type="button" class="btn sm">Send</button>
+        </div>
+      </div>
+
+      <!-- Tab 2: Interactive Draw & Colors -->
+      <div id="widgetTab-draw" class="widget-tab-content hidden">
+        <canvas id="widgetCanvas" width="280" height="120" style="background:#0d1117;border-radius:8px;border:1px solid var(--accent,#ff8fab);cursor:crosshair;touch-action:none;"></canvas>
+        <div class="widget-color-palette" style="display:flex;gap:6px;align-items:center;margin-top:6px;justify-content:space-between;">
+          <div style="display:flex;gap:4px;" id="widgetColorPicker">
+            <button type="button" class="widget-color-btn active" data-color="#ff8fab" style="background:#ff8fab;width:20px;height:20px;border-radius:50%;border:2px solid #fff;cursor:pointer;"></button>
+            <button type="button" class="widget-color-btn" data-color="#e50914" style="background:#e50914;width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;"></button>
+            <button type="button" class="widget-color-btn" data-color="#00a8e1" style="background:#00a8e1;width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;"></button>
+            <button type="button" class="widget-color-btn" data-color="#2da44e" style="background:#2da44e;width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;"></button>
+            <button type="button" class="widget-color-btn" data-color="#ffe66d" style="background:#ffe66d;width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;"></button>
+            <button type="button" class="widget-color-btn" data-color="#ffffff" style="background:#ffffff;width:20px;height:20px;border-radius:50%;border:none;cursor:pointer;"></button>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <button type="button" class="btn sm ghost" id="btnWidgetClearDraw" style="padding:4px 8px;font-size:0.75rem;">Clear</button>
+            <button type="button" class="btn sm" id="btnWidgetSendDraw" style="background:var(--accent,#ff8fab);color:#121826;font-weight:bold;padding:4px 8px;font-size:0.75rem;">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab 3: Online Photo Search -->
+      <div id="widgetTab-photos" class="widget-tab-content hidden">
+        <div class="widget-input-row">
+          <input type="text" id="widgetPhotoSearchInput" placeholder="Search photos online (e.g. Love, Flowers)..." />
+          <button id="btnWidgetSearchPhotos" type="button" class="btn sm">🔍</button>
+        </div>
+        <div id="widgetPhotoResults" class="widget-photo-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:6px;max-height:100px;overflow-y:auto;">
+          <!-- Photos populated dynamically -->
+        </div>
       </div>
     </div>
   </div>

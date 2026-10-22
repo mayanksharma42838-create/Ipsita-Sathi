@@ -1615,9 +1615,7 @@ const App = (() => {
       }
     });
 
-    $("#btnNetflixFullscreen")?.addEventListener("click", () => {
-      FilmTV.toggleFullscreen().catch((e) => setFilmTVError(e.message));
-    });
+
 
     $("#btnEnableNotifications")?.addEventListener("click", () => {
       requestNotificationPermissions(false);
