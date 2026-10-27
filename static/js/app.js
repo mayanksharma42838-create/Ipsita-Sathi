@@ -2071,18 +2071,43 @@ const App = (() => {
       state.socket?.emit("timer_sync", { action: "reset", time_left: timerState.timeLeft, mode: timerState.mode });
     });
 
+    $("#btnSetCustomMins")?.addEventListener("click", () => {
+      const mins = parseInt($("#customMinsInput")?.value || "25", 10);
+      if (isNaN(mins) || mins <= 0) return;
+      if (timerState.interval) clearInterval(timerState.interval);
+      timerState.isRunning = false;
+      timerState.totalTime = timerState.timeLeft = mins * 60;
+      updateDisplay();
+      if ($("#timerStatusBadge")) $("#timerStatusBadge").textContent = `Status: Set to ${mins}m`;
+      state.socket?.emit("timer_sync", { action: "set_mode", time_left: timerState.timeLeft });
+    });
+
+    $$("#aestheticTemplateRow .tpl-btn").forEach((btn) => {
+      btn.onclick = () => {
+        $$("#aestheticTemplateRow .tpl-btn").forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const theme = btn.dataset.theme;
+        const box = $("#studyTimerDisplayContainer");
+        if (box) box.className = `aesthetic-timer-box style-${theme} font-garamond glow-on`;
+      };
+    });
+
     const audio = $("#syncedStudyAudio");
     $("#btnMusicToggle")?.addEventListener("click", () => {
       if (!audio) return;
       if (audio.paused) {
         const track = $("#musicTrackSelect")?.value || "lofi";
         audio.src = TRACK_URLS[track] || TRACK_URLS.lofi;
-        audio.play().catch(() => {});
-        $("#btnMusicToggle").textContent = "⏸ Pause Music";
+        audio.play().then(() => {
+          $("#btnMusicToggle").textContent = "⏸ Pause Music";
+        }).catch((e) => {
+          console.warn("Audio play issue, retrying:", e);
+          audio.play().catch(() => {});
+        });
         state.socket?.emit("music_sync", { action: "play", track_id: track });
       } else {
         audio.pause();
-        $("#btnMusicToggle").textContent = "🎵 Music";
+        $("#btnMusicToggle").textContent = "🎵 Play Music";
         state.socket?.emit("music_sync", { action: "pause" });
       }
     });

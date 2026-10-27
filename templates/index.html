@@ -226,32 +226,6 @@
             </div>
           </header>
 
-          <form id="filmtvSearchForm" class="filmtv-search" role="search">
-            <label for="filmtvSearchInput">Search together</label>
-            <input id="filmtvSearchInput" type="search" maxlength="300" placeholder="Search Google..." autocomplete="off" />
-            <button type="submit" class="btn sm">Search Google ↗</button>
-            <button type="button" class="btn sm ghost" id="btnFilmTVAutoOpenSearch" aria-pressed="false" title="Allow partner searches and watch-app links to open in a tab">Enable partner auto-open</button>
-            <button type="button" class="btn sm ghost" id="btnFilmTVPartnerSearch" hidden>Open partner's search ↗</button>
-            <span id="filmtvSearchStatus" role="status" aria-live="polite"></span>
-          </form>
-
-          <div class="filmtv-provider-links" aria-label="Official synchronized watch apps">
-            <span>Watch apps</span>
-            <button type="button" class="btn sm ghost" data-watch-provider="teleparty">TP Teleparty ↗</button>
-            <button type="button" class="btn sm ghost" data-watch-provider="rave">Rave ↗</button>
-            <button type="button" class="btn sm ghost" id="btnFilmTVPartnerProvider" hidden>Open partner's app ↗</button>
-          </div>
-
-          <section class="filmtv-movies" aria-label="Public-domain movie search">
-            <form id="archiveSearchForm" class="filmtv-search" role="search">
-              <label for="archiveSearchInput">Find full-length free movies</label>
-              <input id="archiveSearchInput" type="search" maxlength="120" placeholder="Try Duck and Cover or Night of the Living Dead" autocomplete="off" required />
-              <button type="submit" class="btn sm">Search movies</button>
-            </form>
-            <p id="archiveSearchStatus" role="status" aria-live="polite">Only 60+ minute items in curated Archive collections. Latest commercial releases are not included.</p>
-            <div id="archiveSearchResults" class="archive-search-results"></div>
-          </section>
-
           <div class="filmtv-player-wrap">
             <video id="filmtvVideo" playsinline controls controlslist="nodownload" style="display:none;"></video>
             
@@ -717,24 +691,30 @@
     <div class="modal modal-lg" style="max-width:580px;">
       <div style="text-align:center;margin-bottom:8px;">
         <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--gold,#c9a24b);margin:0;">⏱️ Aesthetic Study Timer</h3>
-        <p class="hint" style="margin:2px 0 0;">Synced Pomodoro focus & ambient study music.</p>
+        <p class="hint" style="margin:2px 0 0;">Synced Pomodoro focus with custom minutes & ready-to-use aesthetic themes.</p>
       </div>
 
-      <div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px;">
-        <button type="button" class="btn sm timer-mode-btn active" data-mode="work">🎯 Focus (25m)</button>
-        <button type="button" class="btn sm ghost timer-mode-btn" data-mode="short">☕ Break (5m)</button>
-        <button type="button" class="btn sm ghost timer-mode-btn" data-mode="long">🌴 Rest (15m)</button>
+      <!-- Quick Preset Minutes & Custom Input -->
+      <div style="display:flex;justify-content:center;align-items:center;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+        <button type="button" class="btn sm timer-mode-btn active" data-mode="work" data-mins="25">🎯 Focus 25m</button>
+        <button type="button" class="btn sm ghost timer-mode-btn" data-mode="short" data-mins="5">☕ Break 5m</button>
+        <button type="button" class="btn sm ghost timer-mode-btn" data-mode="long" data-mins="15">🌴 Rest 15m</button>
+        <div style="display:flex;align-items:center;gap:4px;margin-left:6px;">
+          <input type="number" id="customMinsInput" min="1" max="300" value="30" placeholder="Mins" style="width:60px;padding:4px;border-radius:6px;background:#121110;color:#fff;border:1px solid var(--gold,#c9a24b);text-align:center;font-size:0.8rem;" />
+          <button type="button" class="btn sm" id="btnSetCustomMins" style="padding:4px 8px;font-size:0.75rem;">Set Mins</button>
+        </div>
       </div>
 
-      <div id="studyTimerDisplayContainer" class="aesthetic-timer-box style-onyx font-garamond glow-on" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;border-radius:14px;background:rgba(18,17,16,0.9);border:1px solid rgba(201,162,75,0.4);position:relative;margin-bottom:10px;">
-        <div id="timerRingWrap" style="position:relative;width:150px;height:150px;display:flex;align-items:center;justify-content:center;">
-          <svg width="150" height="150" viewBox="0 0 100 100" style="transform:rotate(-90deg);position:absolute;top:0;left:0;">
+      <!-- Aesthetic Display Container -->
+      <div id="studyTimerDisplayContainer" class="aesthetic-timer-box style-onyx font-garamond glow-on" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;border-radius:16px;background:rgba(18,17,16,0.9);border:1px solid rgba(201,162,75,0.4);position:relative;margin-bottom:10px;box-shadow:0 0 25px rgba(201,162,75,0.2);">
+        <div id="timerRingWrap" style="position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center;">
+          <svg width="160" height="160" viewBox="0 0 100 100" style="transform:rotate(-90deg);position:absolute;top:0;left:0;">
             <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.1)" stroke-width="6" fill="none"></circle>
             <circle id="timerProgressRing" cx="50" cy="50" r="44" stroke="var(--gold, #c9a24b)" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="276.46" stroke-dashoffset="0" style="transition:stroke-dashoffset 1s linear;"></circle>
           </svg>
-          <div id="timerDigits" style="font-size:2.5rem;font-weight:700;z-index:2;color:var(--gold,#c9a24b);">25:00</div>
+          <div id="timerDigits" style="font-size:2.6rem;font-weight:700;z-index:2;color:var(--gold,#c9a24b);">25:00</div>
         </div>
-        <div id="timerStatusBadge" style="margin-top:4px;font-size:0.75rem;color:rgba(236,230,216,0.7);">Status: Ready</div>
+        <div id="timerStatusBadge" style="margin-top:6px;font-size:0.8rem;color:rgba(236,230,216,0.7);">Status: Ready</div>
       </div>
 
       <div style="display:flex;justify-content:center;gap:8px;margin-bottom:10px;">
@@ -743,22 +723,35 @@
         <button type="button" class="btn sm ghost" id="btnTimerReset">🔄 Reset</button>
       </div>
 
-      <details style="background:rgba(0,0,0,0.3);border:1px solid rgba(201,162,75,0.2);border-radius:8px;padding:6px;margin-bottom:8px;">
-        <summary style="cursor:pointer;font-weight:600;color:var(--gold,#c9a24b);font-size:0.8rem;">🎨 100+ Aesthetic Customizer</summary>
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:4px;">
-          <div><label style="font-size:0.65rem;color:#ccc;">Theme</label><select id="timerThemeSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="onyx">Onyx Gold</option><option value="cyber">Cyber Neon</option><option value="emerald">Emerald</option><option value="sunset">Sunset</option></select></div>
-          <div><label style="font-size:0.65rem;color:#ccc;">Dial</label><select id="timerDialSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="ring">Ring</option><option value="flip">Flip</option><option value="box">Box</option></select></div>
-          <div><label style="font-size:0.65rem;color:#ccc;">Font</label><select id="timerFontSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="garamond">Garamond</option><option value="manrope">Manrope</option><option value="mono">Mono</option></select></div>
-          <div><label style="font-size:0.65rem;color:#ccc;">Glow</label><select id="timerGlowSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="on">Glow</option><option value="off">Matte</option></select></div>
+      <!-- Ready-To-Use Aesthetic Templates -->
+      <div style="background:rgba(0,0,0,0.3);border:1px solid rgba(201,162,75,0.2);border-radius:8px;padding:8px;margin-bottom:8px;">
+        <span style="font-weight:600;color:var(--gold,#c9a24b);font-size:0.8rem;display:block;margin-bottom:4px;">✨ Ready-To-Use Aesthetic Themes</span>
+        <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;" id="aestheticTemplateRow">
+          <button type="button" class="btn sm ghost tpl-btn active" data-theme="onyx" style="font-size:0.75rem;padding:3px 8px;">✨ Onyx Gold</button>
+          <button type="button" class="btn sm ghost tpl-btn" data-theme="cyber" style="font-size:0.75rem;padding:3px 8px;">⚡ Cyber Neon</button>
+          <button type="button" class="btn sm ghost tpl-btn" data-theme="emerald" style="font-size:0.75rem;padding:3px 8px;">🌿 Emerald</button>
+          <button type="button" class="btn sm ghost tpl-btn" data-theme="sunset" style="font-size:0.75rem;padding:3px 8px;">🌅 Sunset</button>
+          <button type="button" class="btn sm ghost tpl-btn" data-theme="velvet" style="font-size:0.75rem;padding:3px 8px;">💜 Velvet</button>
+          <button type="button" class="btn sm ghost tpl-btn" data-theme="frost" style="font-size:0.75rem;padding:3px 8px;">❄️ Frost</button>
         </div>
-      </details>
+      </div>
 
-      <div style="background:rgba(0,0,0,0.4);border:1px solid rgba(201,162,75,0.2);border-radius:8px;padding:6px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+      <!-- Synced Lofi Music Player -->
+      <div style="background:rgba(0,0,0,0.4);border:1px solid rgba(201,162,75,0.2);border-radius:8px;padding:8px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
         <div style="display:flex;align-items:center;gap:6px;">
-          <button type="button" class="btn sm" id="btnMusicToggle" style="background:var(--gold,#c9a24b);color:#0a0908;font-size:0.75rem;">🎵 Music</button>
-          <select id="musicTrackSelect" style="padding:2px;font-size:0.75rem;"><option value="lofi">☕ Lofi Beats</option><option value="rain">🌧️ Rain</option><option value="forest">🌲 Forest</option></select>
+          <button type="button" class="btn sm" id="btnMusicToggle" style="background:var(--gold,#c9a24b);color:#0a0908;font-size:0.75rem;font-weight:bold;">🎵 Play Music</button>
+          <select id="musicTrackSelect" style="padding:2px 4px;font-size:0.75rem;background:#121110;color:#fff;border:1px solid #333;">
+            <option value="lofi">☕ Lofi Beats</option>
+            <option value="rain">🌧️ Rain Sounds</option>
+            <option value="forest">🌲 Forest Stream</option>
+            <option value="cafe">☕ Cafe Ambiance</option>
+            <option value="waves">🌊 Theta Waves</option>
+          </select>
         </div>
-        <div style="display:flex;align-items:center;gap:4px;"><span style="font-size:0.75rem;color:#aaa;">🔊</span><input type="range" id="musicVolumeSlider" min="0" max="1" step="0.05" value="0.5" style="width:50px;" /></div>
+        <div style="display:flex;align-items:center;gap:4px;">
+          <span style="font-size:0.75rem;color:#aaa;">🔊</span>
+          <input type="range" id="musicVolumeSlider" min="0" max="1" step="0.05" value="0.5" style="width:50px;" />
+        </div>
         <audio id="syncedStudyAudio" loop preload="none"></audio>
       </div>
 

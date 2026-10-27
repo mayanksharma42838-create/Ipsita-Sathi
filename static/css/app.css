@@ -1797,17 +1797,69 @@ body.pdf-document-open.messages-open #messages {
   color: #fff;
 }
 
+/* ─── Ready-To-Use Aesthetic Timer Themes CSS ─── */
+.aesthetic-timer-box.style-onyx {
+  background: linear-gradient(145deg, #0a0908, #181614) !important;
+  border: 1px solid rgba(201,162,75,0.4) !important;
+  box-shadow: 0 0 25px rgba(201,162,75,0.25) !important;
+}
+.aesthetic-timer-box.style-onyx #timerDigits { color: #ecd593 !important; text-shadow: 0 0 15px rgba(201,162,75,0.6); }
+.aesthetic-timer-box.style-onyx #timerProgressRing { stroke: #c9a24b !important; }
+
+.aesthetic-timer-box.style-cyber {
+  background: linear-gradient(145deg, #050b14, #0d1b2a) !important;
+  border: 1px solid rgba(0,245,255,0.4) !important;
+  box-shadow: 0 0 25px rgba(0,245,255,0.25) !important;
+}
+.aesthetic-timer-box.style-cyber #timerDigits { color: #00f5ff !important; text-shadow: 0 0 15px rgba(0,245,255,0.6); }
+.aesthetic-timer-box.style-cyber #timerProgressRing { stroke: #00f5ff !important; }
+
+.aesthetic-timer-box.style-emerald {
+  background: linear-gradient(145deg, #06140d, #0f2b1d) !important;
+  border: 1px solid rgba(45,164,78,0.4) !important;
+  box-shadow: 0 0 25px rgba(45,164,78,0.25) !important;
+}
+.aesthetic-timer-box.style-emerald #timerDigits { color: #6bcb77 !important; text-shadow: 0 0 15px rgba(107,203,119,0.6); }
+.aesthetic-timer-box.style-emerald #timerProgressRing { stroke: #2da44e !important; }
+
+.aesthetic-timer-box.style-sunset {
+  background: linear-gradient(145deg, #1f0a14, #381423) !important;
+  border: 1px solid rgba(255,123,84,0.4) !important;
+  box-shadow: 0 0 25px rgba(255,123,84,0.25) !important;
+}
+.aesthetic-timer-box.style-sunset #timerDigits { color: #ffb26b !important; text-shadow: 0 0 15px rgba(255,178,107,0.6); }
+.aesthetic-timer-box.style-sunset #timerProgressRing { stroke: #ff7b54 !important; }
+
+.aesthetic-timer-box.style-velvet {
+  background: linear-gradient(145deg, #120a1f, #24133d) !important;
+  border: 1px solid rgba(163,112,247,0.4) !important;
+  box-shadow: 0 0 25px rgba(163,112,247,0.25) !important;
+}
+.aesthetic-timer-box.style-velvet #timerDigits { color: #d8b4fe !important; text-shadow: 0 0 15px rgba(216,180,254,0.6); }
+.aesthetic-timer-box.style-velvet #timerProgressRing { stroke: #a370f7 !important; }
+
+.aesthetic-timer-box.style-frost {
+  background: linear-gradient(145deg, #0a141d, #132233) !important;
+  border: 1px solid rgba(112,214,255,0.4) !important;
+  box-shadow: 0 0 25px rgba(112,214,255,0.25) !important;
+}
+.aesthetic-timer-box.style-frost #timerDigits { color: #e0f7fa !important; text-shadow: 0 0 15px rgba(224,247,250,0.6); }
+.aesthetic-timer-box.style-frost #timerProgressRing { stroke: #70d6ff !important; }
+
+/* ─── Mobile Responsiveness & Overlap Fixes ─── */
 @media (max-width: 768px) {
-  body.filmtv-open .netflix-container,
-  body.filmtv-open .netflix-player-wrap,
-  body.filmtv-open #netflixIframe {
-    width: 100% !important;
-    height: 100% !important;
-    max-height: 100dvh !important;
-    min-height: 0 !important;
-    aspect-ratio: 16/9;
-    object-fit: contain;
-  }
+  body { font-size: 14px; }
+  .modal { width: 95% !important; max-width: 95% !important; padding: 12px !important; margin: 10px auto; }
+  .modal h3 { font-size: 1.3rem !important; }
+  .filmtv-stage { width: 100% !important; min-height: 280px !important; }
+  .filmtv-dock-row { flex-direction: column !important; align-items: stretch !important; }
+  .filmtv-header { padding: 8px 10px !important; flex-wrap: wrap !important; gap: 6px !important; }
+  .filmtv-header-actions { flex-wrap: wrap !important; gap: 4px !important; }
+  .filmtv-header-actions .btn { font-size: 0.72rem !important; padding: 4px 8px !important; }
+  .wa-topbar { padding: 8px 10px !important; }
+  .wa-room-title { font-size: 1rem !important; }
+  .toolbar.wa-toolbar { gap: 4px !important; }
+  .toolbar .btn { padding: 6px 8px !important; font-size: 0.85rem !important; }
 }
 
 /* ─── Onyx & Gold Header Styling ─── */
