@@ -702,6 +702,7 @@ const App = (() => {
     state.socket.on("music_sync", (payload) => handleRemoteMusicSync(payload));
     state.socket.on("doc_annotation_sync", (payload) => handleRemoteDocAnnotationSync(payload));
     state.socket.on("spotify_sync", (payload) => handleRemoteSpotifySync(payload));
+    state.socket.on("ott_media_sync", (payload) => handleRemoteOttMediaSync(payload));
     state.socket.on("room_state", (payload) => handleRoomStateRestoration(payload));
   }
 
@@ -1713,6 +1714,12 @@ const App = (() => {
       openModal("settingsModal");
     });
 
+    $("#btnWatchPartyModule")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+      openModal("watchPartyModuleModal");
+      initWatchPartyModule();
+    });
+
     $("#btnWatchParty")?.addEventListener("click", () => {
       $("#headerDropdownMenu")?.classList.add("hidden");
       if (document.body.classList.contains("filmtv-open")) closeFilmTV();
@@ -2440,6 +2447,90 @@ const App = (() => {
     if (iframe) iframe.src = payload.embed_url;
     const timerIframe = $("#timerSpotifyIframe");
     if (timerIframe) timerIframe.src = payload.embed_url;
+  }
+
+  function initWatchPartyModule() {
+    const cards = $$("#ottCardGrid .ott-card");
+    const iframe = $("#ottYtIframe");
+    const video = $("#ottLocalVideo");
+    const input = $("#ottMediaUrlInput");
+    const btnLoad = $("#btnOttLoadUrl");
+    const fileInput = $("#ottFileInput");
+
+    function parseYtEmbed(url) {
+      if (!url) return null;
+      if (url.includes("youtube.com/embed/")) return url;
+      const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]+)/);
+      if (match) return `https://www.youtube.com/embed/${match[1]}?autoplay=1&enablejsapi=1`;
+      return null;
+    }
+
+    cards.forEach((card) => {
+      card.onclick = () => {
+        cards.forEach((c) => c.classList.remove("active"));
+        card.classList.add("active");
+        const url = card.dataset.url;
+        if (iframe && video) {
+          video.style.display = "none";
+          iframe.style.display = "block";
+          iframe.src = url;
+        }
+        state.socket?.emit("ott_media_sync", { embed_url: url, is_video: false });
+      };
+    });
+
+    if (btnLoad && input) {
+      btnLoad.onclick = () => {
+        const raw = input.value.trim();
+        if (!raw) return;
+        const embedUrl = parseYtEmbed(raw);
+        if (embedUrl) {
+          if (iframe && video) {
+            video.style.display = "none";
+            iframe.style.display = "block";
+            iframe.src = embedUrl;
+          }
+          state.socket?.emit("ott_media_sync", { embed_url: embedUrl, is_video: false });
+        } else if (raw.endsWith(".mp4") || raw.endsWith(".webm") || raw.endsWith(".ogg")) {
+          if (iframe && video) {
+            iframe.style.display = "none";
+            video.style.display = "block";
+            video.src = raw;
+            video.play().catch(() => {});
+          }
+          state.socket?.emit("ott_media_sync", { video_src: raw, is_video: true });
+        }
+      };
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") btnLoad.click(); });
+    }
+
+    if (fileInput) {
+      fileInput.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file || !video || !iframe) return;
+        iframe.style.display = "none";
+        video.style.display = "block";
+        video.src = URL.createObjectURL(file);
+        video.play().catch(() => {});
+      };
+    }
+  }
+
+  function handleRemoteOttMediaSync(payload) {
+    if (!payload) return;
+    openModal("watchPartyModuleModal");
+    const iframe = $("#ottYtIframe");
+    const video = $("#ottLocalVideo");
+    if (payload.is_video && payload.video_src && video && iframe) {
+      iframe.style.display = "none";
+      video.style.display = "block";
+      video.src = payload.video_src;
+      video.play().catch(() => {});
+    } else if (payload.embed_url && iframe && video) {
+      video.style.display = "none";
+      iframe.style.display = "block";
+      iframe.src = payload.embed_url;
+    }
   }
 
   function handleRoomStateRestoration(payload) {

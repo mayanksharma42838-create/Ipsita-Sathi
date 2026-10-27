@@ -507,6 +507,22 @@ def on_spotify_sync(data):
     emit("spotify_sync", payload, room=f"room:{room_id}", include_self=False)
 
 
+@socketio.on("ott_media_sync")
+def on_ott_media_sync(data):
+    """Broadcast OTT Watch Party shared media selection across room members."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "embed_url": data.get("embed_url"),
+        "video_src": data.get("video_src"),
+        "is_video": data.get("is_video", False),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("ott_media_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
 @socketio.on("request_room_state")
 def on_request_room_state(_data=None):
     """Restore active room timer theme, time left, and Spotify embed URL on connect/reconnect."""
