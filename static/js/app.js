@@ -700,6 +700,7 @@ const App = (() => {
     state.socket.on("timer_sync", (payload) => handleRemoteTimerSync(payload));
     state.socket.on("music_sync", (payload) => handleRemoteMusicSync(payload));
     state.socket.on("doc_annotation_sync", (payload) => handleRemoteDocAnnotationSync(payload));
+    state.socket.on("spotify_sync", (payload) => handleRemoteSpotifySync(payload));
   }
 
   let zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
@@ -1716,6 +1717,12 @@ const App = (() => {
       else openFilmTV();
     });
 
+    $("#btnSpotify")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+      openModal("spotifyModal");
+      initSpotifyPlayer();
+    });
+
     $("#btnStudyTimer")?.addEventListener("click", () => {
       $("#headerDropdownMenu")?.classList.add("hidden");
       openModal("studyTimerModal");
@@ -2219,6 +2226,47 @@ const App = (() => {
     });
   }
 
+  function initSpotifyPlayer() {
+    const iframe = $("#spotifyIframe");
+    const input = $("#spotifyUrlInput");
+    const btnLoad = $("#btnLoadSpotifyUrl");
+    const presets = $$("#spotifyPresetContainer .sp-preset");
+
+    function parseSpotifyEmbed(url) {
+      if (!url) return null;
+      if (url.includes("spotify.com/embed/")) return url;
+      const match = url.match(/spotify\.com\/(playlist|track|album|artist)\/([a-zA-Z0-9]+)/);
+      if (match) {
+        return `https://open.spotify.com/embed/${match[1]}/${match[2]}?utm_source=generator&theme=0`;
+      }
+      return null;
+    }
+
+    if (btnLoad && input && iframe) {
+      btnLoad.onclick = () => {
+        const url = input.value.trim();
+        const embedUrl = parseSpotifyEmbed(url);
+        if (embedUrl) {
+          iframe.src = embedUrl;
+          state.socket?.emit("spotify_sync", { embed_url: embedUrl });
+        } else {
+          alert("Invalid Spotify URL. Paste a valid Spotify track, album, or playlist link!");
+        }
+      };
+    }
+
+    presets.forEach((btn) => {
+      btn.onclick = () => {
+        presets.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const id = btn.dataset.spotifyId;
+        const embedUrl = `https://open.spotify.com/embed/playlist/${id}?utm_source=generator&theme=0`;
+        if (iframe) iframe.src = embedUrl;
+        state.socket?.emit("spotify_sync", { embed_url: embedUrl });
+      };
+    });
+  }
+
   function handleRemoteDocAnnotationSync(payload) {
     if (!payload || !payload.annotation) return;
     const list = $("#docNotesList");
@@ -2325,6 +2373,13 @@ const App = (() => {
   function handleRemoteVideoSync(payload) {
     if (!payload || !payload.action) return;
     FilmTV.openStage();
+  }
+
+  function handleRemoteSpotifySync(payload) {
+    if (!payload || !payload.embed_url) return;
+    const iframe = $("#spotifyIframe");
+    if (iframe) iframe.src = payload.embed_url;
+    openModal("spotifyModal");
   }
 
   return { init };

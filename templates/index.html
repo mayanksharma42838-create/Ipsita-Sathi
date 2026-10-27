@@ -164,6 +164,7 @@
         </div>
         <div class="toolbar wa-toolbar">
           <button type="button" class="btn ghost icon-btn" id="btnWatchParty" title="YouTube & Video Watch Party">📺</button>
+          <button type="button" class="btn ghost icon-btn" id="btnSpotify" title="Integrated Spotify Music">🎵</button>
           <button type="button" class="btn ghost icon-btn" id="btnStudyTimer" title="Aesthetic Study Timer & Synced Music">⏱️</button>
           <button type="button" class="btn ghost icon-btn" id="btnDocWorkspace" title="Document & Study Workspace">📑</button>
           <button type="button" class="btn ghost icon-btn" id="btnGallery" title="Room Vault">🖼️</button>
@@ -180,6 +181,9 @@
           <div id="headerDropdownMenu" class="header-dropdown-menu hidden" style="position:absolute;top:50px;right:15px;background:#121110;border:1px solid rgba(201,162,75,0.3);border-radius:12px;padding:8px 0;box-shadow:0 10px 30px rgba(0,0,0,0.8);z-index:999;min-width:210px;">
             <div class="dropdown-item" onclick="document.getElementById('btnWatchParty').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
               <span>📺</span> YouTube Watch Party
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('btnSpotify').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#1db954;font-size:0.9rem;">
+              <span>🎵</span> Spotify Integrated Music
             </div>
             <div class="dropdown-item" onclick="document.getElementById('btnStudyTimer').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
               <span>⏱️</span> Study Timer & Music
@@ -759,9 +763,38 @@
         <button type="button" class="btn ghost" data-close="studyTimerModal">Close</button>
       </div>
     </div>
-  </div>
+  <!-- Integrated Spotify Music Player Modal -->
+  <div class="overlay" id="spotifyModal">
+    <div class="modal modal-lg" style="max-width:680px;background:#0d1117;border:1px solid #1db954;box-shadow:0 0 30px rgba(29,185,84,0.3);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="#1db954"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.899 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.019zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141 C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C13.56 8.4 7.08 8.16 3.36 9.301c-.6.18-.1.2-.841-.36-.66-.18-.42-.66-.24-1.261C6.06 6.36 13.2 6.6 17.76 9.36c.54.3.72.961.42 1.5-.3.54-.96.72-1.5.42z"/></svg>
+          <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:#1db954;margin:0;">Integrated Spotify Music</h3>
+        </div>
+        <button type="button" class="btn sm ghost" data-close="spotifyModal" style="color:#aaa;">✕ Close</button>
+      </div>
 
-  <!-- Gallery / Vault -->
+      <!-- Spotify Link or Playlist Search Bar -->
+      <div style="display:flex;gap:6px;margin-bottom:10px;">
+        <input type="text" id="spotifyUrlInput" placeholder="Paste Spotify track, album, or playlist link..." style="flex:1;padding:6px 10px;border-radius:6px;background:#121110;border:1px solid #1db954;color:#fff;font-size:0.8rem;" />
+        <button type="button" class="btn sm" id="btnLoadSpotifyUrl" style="background:#1db954;color:#000;font-weight:bold;padding:6px 14px;">▶ Play Link</button>
+      </div>
+
+      <!-- Aesthetic Spotify Playlist Presets -->
+      <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;" id="spotifyPresetContainer">
+        <button type="button" class="btn sm ghost sp-preset active" data-spotify-id="37i9dQZF1DX8Ueb1S3V3P8" style="font-size:0.75rem;padding:3px 8px;">☕ Lofi Beats</button>
+        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DWZeKCadA3A2A" style="font-size:0.75rem;padding:3px 8px;">🌌 Deep Focus</button>
+        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DXcBWIGoYBM5M" style="font-size:0.75rem;padding:3px 8px;">🌃 Top Hits</button>
+        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DX0SM0L3A3fA6" style="font-size:0.75rem;padding:3px 8px;">🌸 Romantic Duets</button>
+        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DXdLEN2aqioXM" style="font-size:0.75rem;padding:3px 8px;">🌃 Synthwave Study</button>
+      </div>
+
+      <!-- Embedded Spotify Web Player IFrame -->
+      <div id="spotifyIframeWrap" style="width:100%;height:360px;border-radius:10px;overflow:hidden;border:1px solid rgba(29,185,84,0.4);background:#000;">
+        <iframe id="spotifyIframe" src="https://open.spotify.com/embed/playlist/37i9dQZF1DX8Ueb1S3V3P8?utm_source=generator&theme=0" width="100%" height="100%" frameborder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>
+      </div>
+    </div>
+  </div>
   <div class="overlay" id="galleryModal">
     <div class="modal modal-lg">
       <h3>Room Vault</h3>

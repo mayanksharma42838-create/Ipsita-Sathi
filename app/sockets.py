@@ -472,3 +472,17 @@ def on_doc_annotation_sync(data):
         "sender_name": member.display_name,
     }
     emit("doc_annotation_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("spotify_sync")
+def on_spotify_sync(data):
+    """Broadcast integrated Spotify player embed URL to partner."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "embed_url": data.get("embed_url"),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("spotify_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
