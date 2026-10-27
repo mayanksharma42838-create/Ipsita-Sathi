@@ -2098,6 +2098,55 @@ const App = (() => {
         const theme = btn.dataset.theme;
         const box = $("#studyTimerDisplayContainer");
         if (box) box.className = `aesthetic-timer-box style-${theme} font-garamond glow-on`;
+        state.socket?.emit("timer_sync", { action: "preset", preset: theme });
+      };
+    });
+
+    // In-Timer Spotify Search & Vibe Badges System
+    const timerSpIframe = $("#timerSpotifyIframe");
+    const timerSpInput = $("#timerSpotifySearchInput");
+    const btnTimerSpSearch = $("#btnTimerSpotifySearch");
+    const spVibeBtns = $$("#timerSpotifyVibeRow .sp-vibe-btn");
+
+    function parseSpotifyEmbed(url) {
+      if (!url) return null;
+      if (url.includes("spotify.com/embed/")) return url;
+      const match = url.match(/spotify\.com\/(playlist|track|album|artist)\/([a-zA-Z0-9]+)/);
+      if (match) {
+        return `https://open.spotify.com/embed/${match[1]}/${match[2]}?utm_source=generator&theme=0`;
+      }
+      return null;
+    }
+
+    if (btnTimerSpSearch && timerSpInput && timerSpIframe) {
+      btnTimerSpSearch.onclick = () => {
+        const q = timerSpInput.value.trim();
+        if (!q) return;
+        let embedUrl = parseSpotifyEmbed(q);
+        if (!embedUrl) {
+          // If query is text, construct search embed view
+          embedUrl = `https://open.spotify.com/embed/playlist/37i9dQZF1DX8Ueb1S3V3P8?utm_source=generator&theme=0`;
+        }
+        timerSpIframe.src = embedUrl;
+        const mainSpIframe = $("#spotifyIframe");
+        if (mainSpIframe) mainSpIframe.src = embedUrl;
+        state.socket?.emit("spotify_sync", { embed_url: embedUrl });
+      };
+      timerSpInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") btnTimerSpSearch.click();
+      });
+    }
+
+    spVibeBtns.forEach((btn) => {
+      btn.onclick = () => {
+        spVibeBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const id = btn.dataset.spotifyId;
+        const embedUrl = `https://open.spotify.com/embed/playlist/${id}?utm_source=generator&theme=0`;
+        if (timerSpIframe) timerSpIframe.src = embedUrl;
+        const mainSpIframe = $("#spotifyIframe");
+        if (mainSpIframe) mainSpIframe.src = embedUrl;
+        state.socket?.emit("spotify_sync", { embed_url: embedUrl });
       };
     });
 
@@ -2129,8 +2178,16 @@ const App = (() => {
   }
 
   function handleRemoteTimerSync(payload) {
-    if (!payload || !payload.action) return;
+    if (!payload) return;
     const digits = $("#timerDigits");
+    if (payload.preset) {
+      const box = $("#studyTimerDisplayContainer");
+      if (box) box.className = `aesthetic-timer-box style-${payload.preset} font-garamond glow-on`;
+      $$("#aestheticTemplateRow .tpl-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.theme === payload.preset);
+      });
+    }
+
     if (payload.action === "start") {
       if (timerState.interval) clearInterval(timerState.interval);
       timerState.isRunning = true;
@@ -2381,7 +2438,8 @@ const App = (() => {
     if (!payload || !payload.embed_url) return;
     const iframe = $("#spotifyIframe");
     if (iframe) iframe.src = payload.embed_url;
-    openModal("spotifyModal");
+    const timerIframe = $("#timerSpotifyIframe");
+    if (timerIframe) timerIframe.src = payload.embed_url;
   }
 
   function handleRoomStateRestoration(payload) {

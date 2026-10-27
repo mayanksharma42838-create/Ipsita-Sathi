@@ -1846,6 +1846,39 @@ body.pdf-document-open.messages-open #messages {
 .aesthetic-timer-box.style-frost #timerDigits { color: #e0f7fa !important; text-shadow: 0 0 15px rgba(224,247,250,0.6); }
 .aesthetic-timer-box.style-frost #timerProgressRing { stroke: #70d6ff !important; }
 
+.aesthetic-timer-box.style-anime {
+  background: linear-gradient(145deg, #0f0c1b, #24143a) !important;
+  border: 1px solid rgba(255,64,129,0.4) !important;
+  box-shadow: 0 0 25px rgba(255,64,129,0.3) !important;
+}
+.aesthetic-timer-box.style-anime #timerDigits { color: #ff80ab !important; text-shadow: 0 0 18px rgba(255,64,129,0.8); }
+.aesthetic-timer-box.style-anime #timerProgressRing { stroke: #ff4081 !important; }
+
+.aesthetic-timer-box.style-rain {
+  background: linear-gradient(145deg, #0e1726, #1d2d44) !important;
+  border: 1px solid rgba(0,210,255,0.4) !important;
+  box-shadow: 0 0 25px rgba(0,210,255,0.25) !important;
+}
+.aesthetic-timer-box.style-rain #timerDigits { color: #80e5ff !important; text-shadow: 0 0 15px rgba(128,229,255,0.6); }
+.aesthetic-timer-box.style-rain #timerProgressRing { stroke: #00d2ff !important; }
+
+.aesthetic-timer-box.style-flip {
+  background: linear-gradient(145deg, #181818, #282828) !important;
+  border: 1px solid rgba(255,255,255,0.2) !important;
+  box-shadow: inset 0 0 15px rgba(0,0,0,0.8), 0 0 20px rgba(0,0,0,0.5) !important;
+}
+.aesthetic-timer-box.style-flip #timerDigits { color: #ffffff !important; font-family: monospace !important; letter-spacing: 4px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+.aesthetic-timer-box.style-flip #timerProgressRing { stroke: #ffffff !important; }
+
+.aesthetic-timer-box.style-glass {
+  background: rgba(255, 255, 255, 0.05) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.37) !important;
+}
+.aesthetic-timer-box.style-glass #timerDigits { color: #ffffff !important; text-shadow: 0 0 12px rgba(255,255,255,0.5); }
+.aesthetic-timer-box.style-glass #timerProgressRing { stroke: #ecd593 !important; }
+
 /* ─── Mobile Responsiveness & Overlap Fixes ─── */
 @media (max-width: 768px) {
   body { font-size: 14px; }
