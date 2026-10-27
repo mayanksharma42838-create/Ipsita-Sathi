@@ -693,6 +693,13 @@ const App = (() => {
     state.socket.on("connect", () => {
       state.socket.emit("filmtv_request_sync", { token: state.token });
     });
+
+    // ─── New Synced Socket Listeners (YouTube Watch Party, Aesthetic Timer, Study Music, Doc Annotations) ───
+    state.socket.on("yt_sync", (payload) => handleRemoteYtSync(payload));
+    state.socket.on("video_sync", (payload) => handleRemoteVideoSync(payload));
+    state.socket.on("timer_sync", (payload) => handleRemoteTimerSync(payload));
+    state.socket.on("music_sync", (payload) => handleRemoteMusicSync(payload));
+    state.socket.on("doc_annotation_sync", (payload) => handleRemoteDocAnnotationSync(payload));
   }
 
   let zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
@@ -1703,9 +1710,27 @@ const App = (() => {
       openModal("settingsModal");
     });
 
-    $("#btnGames")?.addEventListener("click", () => {
+    $("#btnWatchParty")?.addEventListener("click", () => {
       $("#headerDropdownMenu")?.classList.add("hidden");
-      openModal("gamesModal");
+      if (document.body.classList.contains("filmtv-open")) closeFilmTV();
+      else openFilmTV();
+    });
+
+    $("#btnStudyTimer")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+      openModal("studyTimerModal");
+      initStudyTimer();
+    });
+
+    $("#btnDocWorkspace")?.addEventListener("click", () => {
+      $("#headerDropdownMenu")?.classList.add("hidden");
+      openModal("docWorkspaceModal");
+      initDocWorkspace();
+    });
+
+    $("#btnGifSticker")?.addEventListener("click", () => {
+      openModal("gifStickerModal");
+      initRichMediaPicker();
     });
     $("#btnTheme")?.addEventListener("click", () => {
       $("#headerDropdownMenu")?.classList.add("hidden");
@@ -1977,6 +2002,304 @@ const App = (() => {
     initFilmTV();
     initZoom();
     tryRestore();
+  }
+
+  // ─── Synced Modules Implementation ───
+  let timerState = { timeLeft: 25 * 60, totalTime: 25 * 60, interval: null, mode: "work", isRunning: false };
+  const TRACK_URLS = {
+    lofi: "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
+    rain: "https://cdn.pixabay.com/download/audio/2021/08/09/audio_8844888716.mp3",
+    forest: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73213.mp3"
+  };
+
+  function initStudyTimer() {
+    const digits = $("#timerDigits");
+    const progressRing = $("#timerProgressRing");
+    const modeBtns = $$(".timer-mode-btn");
+
+    function updateDisplay() {
+      const m = Math.floor(timerState.timeLeft / 60);
+      const s = timerState.timeLeft % 60;
+      if (digits) digits.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+      if (progressRing) {
+        const percent = timerState.timeLeft / (timerState.totalTime || 1);
+        progressRing.style.strokeDashoffset = 276.46 * (1 - percent);
+      }
+    }
+
+    modeBtns.forEach((btn) => {
+      btn.onclick = () => {
+        modeBtns.forEach((b) => b.classList.remove("active"));
+        btn.classList.add("active");
+        const mode = btn.dataset.mode;
+        timerState.mode = mode;
+        if (mode === "work") timerState.timeLeft = timerState.totalTime = 25 * 60;
+        else if (mode === "short") timerState.timeLeft = timerState.totalTime = 5 * 60;
+        else if (mode === "long") timerState.timeLeft = timerState.totalTime = 15 * 60;
+        updateDisplay();
+        state.socket?.emit("timer_sync", { action: "set_mode", mode, time_left: timerState.timeLeft });
+      };
+    });
+
+    $("#btnTimerStart")?.addEventListener("click", () => {
+      if (timerState.isRunning) return;
+      timerState.isRunning = true;
+      if ($("#timerStatusBadge")) $("#timerStatusBadge").textContent = "Status: Focusing 🎯";
+      timerState.interval = setInterval(() => {
+        if (timerState.timeLeft > 0) { timerState.timeLeft--; updateDisplay(); }
+        else { clearInterval(timerState.interval); timerState.isRunning = false; }
+      }, 1000);
+      state.socket?.emit("timer_sync", { action: "start", time_left: timerState.timeLeft, mode: timerState.mode });
+    });
+
+    $("#btnTimerPause")?.addEventListener("click", () => {
+      if (!timerState.isRunning) return;
+      clearInterval(timerState.interval);
+      timerState.isRunning = false;
+      if ($("#timerStatusBadge")) $("#timerStatusBadge").textContent = "Status: Paused ⏸";
+      state.socket?.emit("timer_sync", { action: "pause", time_left: timerState.timeLeft, mode: timerState.mode });
+    });
+
+    $("#btnTimerReset")?.addEventListener("click", () => {
+      clearInterval(timerState.interval);
+      timerState.isRunning = false;
+      if (timerState.mode === "work") timerState.timeLeft = timerState.totalTime = 25 * 60;
+      else if (timerState.mode === "short") timerState.timeLeft = timerState.totalTime = 5 * 60;
+      else if (timerState.mode === "long") timerState.timeLeft = timerState.totalTime = 15 * 60;
+      updateDisplay();
+      if ($("#timerStatusBadge")) $("#timerStatusBadge").textContent = "Status: Ready";
+      state.socket?.emit("timer_sync", { action: "reset", time_left: timerState.timeLeft, mode: timerState.mode });
+    });
+
+    const audio = $("#syncedStudyAudio");
+    $("#btnMusicToggle")?.addEventListener("click", () => {
+      if (!audio) return;
+      if (audio.paused) {
+        const track = $("#musicTrackSelect")?.value || "lofi";
+        audio.src = TRACK_URLS[track] || TRACK_URLS.lofi;
+        audio.play().catch(() => {});
+        $("#btnMusicToggle").textContent = "⏸ Pause Music";
+        state.socket?.emit("music_sync", { action: "play", track_id: track });
+      } else {
+        audio.pause();
+        $("#btnMusicToggle").textContent = "🎵 Music";
+        state.socket?.emit("music_sync", { action: "pause" });
+      }
+    });
+
+    $("#musicVolumeSlider")?.addEventListener("input", (e) => {
+      if (audio) audio.volume = parseFloat(e.target.value);
+    });
+
+    updateDisplay();
+  }
+
+  function handleRemoteTimerSync(payload) {
+    if (!payload || !payload.action) return;
+    const digits = $("#timerDigits");
+    if (payload.action === "start") {
+      if (timerState.interval) clearInterval(timerState.interval);
+      timerState.isRunning = true;
+      if (payload.time_left !== undefined) timerState.timeLeft = payload.time_left;
+      if ($("#timerStatusBadge")) $("#timerStatusBadge").textContent = "Status: Partner Focusing 🎯";
+      timerState.interval = setInterval(() => {
+        if (timerState.timeLeft > 0) {
+          timerState.timeLeft--;
+          const m = Math.floor(timerState.timeLeft / 60);
+          const s = timerState.timeLeft % 60;
+          if (digits) digits.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        }
+      }, 1000);
+    } else if (payload.action === "pause") {
+      clearInterval(timerState.interval);
+      timerState.isRunning = false;
+      if ($("#timerStatusBadge")) $("#timerStatusBadge").textContent = "Status: Partner Paused ⏸";
+    } else if (payload.action === "reset" || payload.action === "set_mode") {
+      clearInterval(timerState.interval);
+      timerState.isRunning = false;
+      if (payload.time_left !== undefined) timerState.timeLeft = payload.time_left;
+      const m = Math.floor(timerState.timeLeft / 60);
+      const s = timerState.timeLeft % 60;
+      if (digits) digits.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+    }
+  }
+
+  function handleRemoteMusicSync(payload) {
+    if (!payload || !payload.action) return;
+    const audio = $("#syncedStudyAudio");
+    if (!audio) return;
+    if (payload.action === "play") {
+      const track = payload.track_id || "lofi";
+      audio.src = TRACK_URLS[track] || TRACK_URLS.lofi;
+      audio.play().catch(() => {});
+      if ($("#btnMusicToggle")) $("#btnMusicToggle").textContent = "⏸ Pause Music";
+    } else if (payload.action === "pause") {
+      audio.pause();
+      if ($("#btnMusicToggle")) $("#btnMusicToggle").textContent = "🎵 Music";
+    }
+  }
+
+  function initDocWorkspace() {
+    const fileInput = $("#docWorkspaceFileInput");
+    fileInput?.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        const body = $("#docViewerBody");
+        if (body) body.textContent = evt.target.result;
+        if ($("#docPageInfo")) $("#docPageInfo").textContent = file.name;
+      };
+      reader.readAsText(file);
+    });
+
+    $("#btnDocHighlight")?.addEventListener("click", () => {
+      const sel = window.getSelection();
+      if (!sel.rangeCount || sel.isCollapsed) return;
+      const range = sel.getRangeAt(0);
+      const color = $("#docHighlightColor")?.value || "#c9a24b";
+      const span = document.createElement("mark");
+      span.style.background = color;
+      span.style.color = "#000";
+      span.style.borderRadius = "3px";
+      span.style.padding = "0 2px";
+      range.surroundContents(span);
+    });
+
+    $("#btnDocUnderline")?.addEventListener("click", () => {
+      const sel = window.getSelection();
+      if (!sel.rangeCount || sel.isCollapsed) return;
+      const range = sel.getRangeAt(0);
+      const span = document.createElement("u");
+      range.surroundContents(span);
+    });
+
+    $("#btnDocAddNote")?.addEventListener("click", () => {
+      const noteText = $("#docNoteInput")?.value.trim();
+      if (!noteText) return;
+      const list = $("#docNotesList");
+      if (list) {
+        const item = document.createElement("div");
+        item.style.background = "rgba(201,162,75,0.15)";
+        item.style.borderLeft = "3px solid var(--gold,#c9a24b)";
+        item.style.padding = "6px 8px";
+        item.style.borderRadius = "4px";
+        item.style.fontSize = "0.75rem";
+        item.style.color = "#ece6d8";
+        item.textContent = noteText;
+        list.appendChild(item);
+      }
+      if ($("#docNoteInput")) $("#docNoteInput").value = "";
+      state.socket?.emit("doc_annotation_sync", { action: "add_note", annotation: noteText });
+    });
+  }
+
+  function handleRemoteDocAnnotationSync(payload) {
+    if (!payload || !payload.annotation) return;
+    const list = $("#docNotesList");
+    if (list) {
+      const item = document.createElement("div");
+      item.style.background = "rgba(0,168,225,0.15)";
+      item.style.borderLeft = "3px solid #00a8e1";
+      item.style.padding = "6px 8px";
+      item.style.borderRadius = "4px";
+      item.style.fontSize = "0.75rem";
+      item.style.color = "#ece6d8";
+      item.textContent = `${payload.sender_name || "Partner"}: ${payload.annotation}`;
+      list.appendChild(item);
+    }
+  }
+
+  function initRichMediaPicker() {
+    const tabs = $$(".picker-tab");
+    tabs.forEach((tab) => {
+      tab.onclick = () => {
+        tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        const t = tab.dataset.tab;
+        $("#pickerTab-gifs")?.classList.toggle("hidden", t !== "gifs");
+        $("#pickerTab-stickers")?.classList.toggle("hidden", t !== "stickers");
+        $("#pickerTab-emojis")?.classList.toggle("hidden", t !== "emojis");
+      };
+    });
+
+    const emojiGrid = $("#fullEmojiGrid");
+    if (emojiGrid && !emojiGrid.children.length) {
+      const emojis = ["❤️", "💖", "😍", "😘", "🥰", "😊", "😂", "🤣", "😭", "🥺", "✨", "🔥", "👍", "🙏", "💯", "🎉", "👑", "🍰", "☕", "🍕", "🌸", "🌹", "🧸", "🐱", "🐶", "📚", "🎧", "🎬", "🎨", "🎮", "⭐", "💫"];
+      emojis.forEach((em) => {
+        const span = document.createElement("span");
+        span.textContent = em;
+        span.onclick = () => {
+          if ($("#composerInput")) $("#composerInput").value += em;
+          $("#gifStickerModal")?.classList.remove("open");
+        };
+        emojiGrid.appendChild(span);
+      });
+    }
+
+    const stickerGrid = $("#stickerGrid");
+    if (stickerGrid && !stickerGrid.children.length) {
+      const stickers = [
+        "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHp1eTZnYXB6ZndkZ29mODl5anlpcnhhM2trbHZzY3FmczNxcWVndyZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/MDJ9IbxxvDUQM/giphy.gif",
+        "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHp1eTZnYXB6ZndkZ29mODl5anlpcnhhM2trbHZzY3FmczNxcWVndyZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/l41K3tOKuM6tJZuE0/giphy.gif"
+      ];
+      stickers.forEach((url) => {
+        const img = document.createElement("img");
+        img.src = url;
+        img.style.width = "100%";
+        img.style.borderRadius = "8px";
+        img.style.cursor = "pointer";
+        img.onclick = () => {
+          if (window.AppSendMessage) window.AppSendMessage(`![Sticker](${url})`);
+          $("#gifStickerModal")?.classList.remove("open");
+        };
+        stickerGrid.appendChild(img);
+      });
+    }
+
+    loadGifs("Love");
+    $("#btnSearchGifs")?.addEventListener("click", () => {
+      const q = $("#gifSearchInput")?.value.trim() || "Love";
+      loadGifs(q);
+    });
+    $$(".gif-tag-btn").forEach((btn) => {
+      btn.onclick = () => loadGifs(btn.dataset.tag);
+    });
+  }
+
+  function loadGifs(query) {
+    const grid = $("#gifResultsGrid");
+    if (!grid) return;
+    const sampleGifs = [
+      "https://media.giphy.com/media/3o7TKoWXm3okO1kgHC/giphy.gif",
+      "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExOHp1eTZnYXB6ZndkZ29mODl5anlpcnhhM2trbHZzY3FmczNxcWVndyZlcD12MV9zdGlja2Vyc19zZWFyY2gmY3Q9cw/MDJ9IbxxvDUQM/giphy.gif",
+      "https://media.giphy.com/media/l41K3tOKuM6tJZuE0/giphy.gif"
+    ];
+    grid.innerHTML = "";
+    sampleGifs.forEach((url) => {
+      const img = document.createElement("img");
+      img.src = url;
+      img.style.width = "100%";
+      img.style.height = "70px";
+      img.style.objectFit = "cover";
+      img.style.borderRadius = "6px";
+      img.style.cursor = "pointer";
+      img.onclick = () => {
+        if (window.AppSendMessage) window.AppSendMessage(`![GIF](${url})`);
+        $("#gifStickerModal")?.classList.remove("open");
+      };
+      grid.appendChild(img);
+    });
+  }
+
+  function handleRemoteYtSync(payload) {
+    if (!payload || !payload.action) return;
+    FilmTV.openStage();
+  }
+
+  function handleRemoteVideoSync(payload) {
+    if (!payload || !payload.action) return;
+    FilmTV.openStage();
   }
 
   return { init };

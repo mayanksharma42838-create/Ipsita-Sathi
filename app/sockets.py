@@ -389,3 +389,86 @@ def on_read_receipt(data=None):
     if not member:
         return
     emit("read_receipt", {"member_id": member.id, "display_name": member.display_name}, room=f"room:{member.room.room_id}")
+
+
+# ─── New Synced Modules (YouTube Watch Party, Local Video, Aesthetic Timer & Study Music) ───
+
+@socketio.on("yt_sync")
+def on_yt_sync(data):
+    """Broadcast YouTube player synchronization actions (play, pause, seek, load)."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": data.get("action"),
+        "video_id": data.get("video_id"),
+        "time": data.get("time", 0.0),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("yt_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("video_sync")
+def on_video_sync(data):
+    """Broadcast Local Uploaded Video synchronization actions."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": data.get("action"),
+        "src": data.get("src"),
+        "time": data.get("time", 0.0),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("video_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("timer_sync")
+def on_timer_sync(data):
+    """Broadcast Aesthetic Study Pomodoro Timer state (start, pause, reset, tick, set_mode, theme)."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": data.get("action"),
+        "time_left": data.get("time_left"),
+        "mode": data.get("mode"),
+        "preset": data.get("preset"),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("timer_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("music_sync")
+def on_music_sync(data):
+    """Broadcast Synced Study Lofi Music state (play, pause, track, volume)."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": data.get("action"),
+        "track_id": data.get("track_id"),
+        "time": data.get("time", 0.0),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("music_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+
+
+@socketio.on("doc_annotation_sync")
+def on_doc_annotation_sync(data):
+    """Broadcast interactive document highlights, underlines, and study notes."""
+    member = _member_from_sid()
+    if not member or not isinstance(data, dict):
+        return
+    payload = {
+        "action": data.get("action"),
+        "doc_id": data.get("doc_id"),
+        "annotation": data.get("annotation"),
+        "sender_id": member.id,
+        "sender_name": member.display_name,
+    }
+    emit("doc_annotation_sync", payload, room=f"room:{member.room.room_id}", include_self=False)

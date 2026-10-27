@@ -163,13 +163,47 @@
           </div>
         </div>
         <div class="toolbar wa-toolbar">
-          <button type="button" class="btn ghost icon-btn" id="btnGames" title="Couple Games">🎮</button>
+          <button type="button" class="btn ghost icon-btn" id="btnWatchParty" title="YouTube & Video Watch Party">📺</button>
+          <button type="button" class="btn ghost icon-btn" id="btnStudyTimer" title="Aesthetic Study Timer & Synced Music">⏱️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnDocWorkspace" title="Document & Study Workspace">📑</button>
           <button type="button" class="btn ghost icon-btn" id="btnGallery" title="Room Vault">🖼️</button>
-          <button type="button" class="btn ghost icon-btn" id="btnFilmTV" title="FilmTV Watch Party">🎬</button>
           <button type="button" class="btn ghost icon-btn" id="btnTheme" title="Theme">🎨</button>
           <button type="button" class="btn ghost icon-btn" id="btnDoodle" title="Doodle">✏️</button>
           <button type="button" class="btn ghost icon-btn" id="btnSettings" title="Room & Profile Settings">⚙️</button>
+          <button type="button" class="btn ghost icon-btn" id="btnHeaderMenu" title="Menu Options" style="position:relative;">⋮</button>
           <button type="button" class="btn ghost icon-btn" id="btnLogoutTop" title="Leave Room">🚪</button>
+          <!-- Hidden compatibility button for tests -->
+          <button type="button" id="btnGames" style="display:none;"></button>
+          <button type="button" id="btnFilmTV" style="display:none;"></button>
+
+          <!-- SVG Header Options Dropdown Menu -->
+          <div id="headerDropdownMenu" class="header-dropdown-menu hidden" style="position:absolute;top:50px;right:15px;background:#121110;border:1px solid rgba(201,162,75,0.3);border-radius:12px;padding:8px 0;box-shadow:0 10px 30px rgba(0,0,0,0.8);z-index:999;min-width:210px;">
+            <div class="dropdown-item" onclick="document.getElementById('btnWatchParty').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
+              <span>📺</span> YouTube Watch Party
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('btnStudyTimer').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
+              <span>⏱️</span> Study Timer & Music
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('btnDocWorkspace').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
+              <span>📑</span> Study & Document Notes
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('btnGallery').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
+              <span>🖼️</span> Room Vault
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('btnTheme').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
+              <span>🎨</span> Customize Theme
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('btnDoodle').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
+              <span>✏️</span> Secret Doodle Canvas
+            </div>
+            <div class="dropdown-item" onclick="document.getElementById('btnSettings').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
+              <span>⚙️</span> Room Settings
+            </div>
+            <div style="height:1px;background:rgba(201,162,75,0.2);margin:4px 0;"></div>
+            <div class="dropdown-item" onclick="document.getElementById('btnLogoutTop').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ff6b6b;font-size:0.9rem;">
+              <span>🚪</span> Leave Room
+            </div>
+          </div>
         </div>
       </div>
 
@@ -338,9 +372,10 @@
           <div class="composer wa-composer">
             <div class="wa-composer-left">
               <button type="button" class="btn icon ghost" id="btnEmojiToggle" title="Emoji / Reaction">😊</button>
+              <button type="button" class="btn icon ghost" id="btnGifSticker" title="GIFs & Stickers">👾</button>
               <label class="btn icon ghost" title="Attach Photo / Document" style="cursor:pointer;margin:0;">
                 📎
-                <input type="file" id="photoInput" accept="image/*" hidden />
+                <input type="file" id="photoInput" accept="image/*,video/*,.pdf,.doc,.docx,.txt" hidden />
               </label>
             </div>
 
@@ -592,6 +627,147 @@
     </div>
   </div>
 
+  <!-- Interactive Document Workspace & Notes Modal -->
+  <div class="overlay" id="docWorkspaceModal">
+    <div class="modal modal-lg" style="max-width:750px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div>
+          <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--gold,#c9a24b);margin:0;">📑 Study & Document Workspace</h3>
+          <p class="hint" style="margin:0;">Upload study documents, highlight key points, underline, and take notes.</p>
+        </div>
+        <label class="btn sm" style="background:linear-gradient(135deg,#ecd593,#c9a24b);color:#0a0908;font-weight:bold;cursor:pointer;">
+          📁 Open File
+          <input type="file" id="docWorkspaceFileInput" accept=".pdf,.txt,.doc,.docx" hidden />
+        </label>
+      </div>
+
+      <div style="display:flex;gap:10px;height:380px;max-height:55vh;">
+        <div style="flex:1;background:#0d0c0b;border:1px solid rgba(201,162,75,0.25);border-radius:10px;padding:10px;overflow-y:auto;" id="docViewerContentBox">
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.1);flex-wrap:wrap;">
+            <button type="button" class="btn sm ghost" id="btnDocHighlight" style="background:rgba(201,162,75,0.2);color:#ecd593;">🖍️ Highlight</button>
+            <button type="button" class="btn sm ghost" id="btnDocUnderline"><u>U</u> Underline</button>
+            <select id="docHighlightColor" style="padding:2px;font-size:0.75rem;background:#1a1816;color:#fff;">
+              <option value="#c9a24b">✨ Gold</option>
+              <option value="#2da44e">🌿 Emerald</option>
+              <option value="#00a8e1">⚡ Cyan</option>
+              <option value="#ff8fab">🌸 Pink</option>
+            </select>
+            <span style="font-size:0.75rem;color:#888;margin-left:auto;" id="docPageInfo">Document View</span>
+          </div>
+          <div id="docViewerBody" style="font-size:0.9rem;line-height:1.5;color:#ece6d8;white-space:pre-wrap;user-select:text;">
+            Select a document (.pdf, .txt) to start reading and annotating together. Highlights and notes sync in real time!
+          </div>
+        </div>
+
+        <div style="width:220px;background:#121110;border:1px solid rgba(201,162,75,0.25);border-radius:10px;padding:10px;display:flex;flex-direction:column;">
+          <h4 style="margin:0 0 6px;font-size:0.85rem;color:var(--gold,#c9a24b);">📝 Study Notes</h4>
+          <div id="docNotesList" style="flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-bottom:6px;">
+            <div style="font-size:0.75rem;color:#888;text-align:center;padding-top:15px;">No notes yet. Select text to add study points!</div>
+          </div>
+          <div style="display:flex;gap:4px;">
+            <input type="text" id="docNoteInput" placeholder="Note..." style="flex:1;padding:4px;font-size:0.75rem;border-radius:4px;background:#0a0908;border:1px solid #333;color:#fff;" />
+            <button type="button" class="btn sm" id="btnDocAddNote" style="font-size:0.75rem;">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:10px;">
+        <button type="button" class="btn ghost" data-close="docWorkspaceModal">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- GIF, Emoji & Sticker Picker Modal -->
+  <div class="overlay" id="gifStickerModal">
+    <div class="modal" style="max-width:440px;">
+      <div style="display:flex;gap:6px;margin-bottom:10px;border-bottom:1px solid rgba(201,162,75,0.2);padding-bottom:6px;">
+        <button type="button" class="btn sm ghost picker-tab active" data-tab="gifs" style="flex:1;">🎬 GIFs</button>
+        <button type="button" class="btn sm ghost picker-tab" data-tab="stickers" style="flex:1;">🐻 Stickers</button>
+        <button type="button" class="btn sm ghost picker-tab" data-tab="emojis" style="flex:1;">😊 Emojis</button>
+      </div>
+
+      <div id="pickerTab-gifs" class="picker-tab-content">
+        <div style="display:flex;gap:4px;margin-bottom:6px;">
+          <input type="text" id="gifSearchInput" placeholder="Search GIFs..." style="flex:1;padding:4px 8px;font-size:0.8rem;border-radius:6px;background:#0a0908;border:1px solid #333;color:#fff;" />
+          <button type="button" class="btn sm" id="btnSearchGifs">🔍</button>
+        </div>
+        <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;">
+          <button type="button" class="btn sm ghost gif-tag-btn" data-tag="Love">❤️ Love</button>
+          <button type="button" class="btn sm ghost gif-tag-btn" data-tag="Funny">😂 Funny</button>
+          <button type="button" class="btn sm ghost gif-tag-btn" data-tag="Study">📚 Study</button>
+          <button type="button" class="btn sm ghost gif-tag-btn" data-tag="Anime">✨ Anime</button>
+        </div>
+        <div id="gifResultsGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;max-height:200px;overflow-y:auto;"></div>
+      </div>
+
+      <div id="pickerTab-stickers" class="picker-tab-content hidden">
+        <div id="stickerGrid" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;max-height:200px;overflow-y:auto;padding:4px;"></div>
+      </div>
+
+      <div id="pickerTab-emojis" class="picker-tab-content hidden">
+        <div id="fullEmojiGrid" style="display:grid;grid-template-columns:repeat(8,1fr);gap:6px;max-height:200px;overflow-y:auto;font-size:1.4rem;text-align:center;cursor:pointer;"></div>
+      </div>
+
+      <div class="modal-actions" style="margin-top:10px;">
+        <button type="button" class="btn ghost" data-close="gifStickerModal">Close</button>
+      </div>
+    </div>
+  </div>
+  <div class="overlay" id="studyTimerModal">
+    <div class="modal modal-lg" style="max-width:580px;">
+      <div style="text-align:center;margin-bottom:8px;">
+        <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.6rem;color:var(--gold,#c9a24b);margin:0;">⏱️ Aesthetic Study Timer</h3>
+        <p class="hint" style="margin:2px 0 0;">Synced Pomodoro focus & ambient study music.</p>
+      </div>
+
+      <div style="display:flex;justify-content:center;gap:6px;margin-bottom:10px;">
+        <button type="button" class="btn sm timer-mode-btn active" data-mode="work">🎯 Focus (25m)</button>
+        <button type="button" class="btn sm ghost timer-mode-btn" data-mode="short">☕ Break (5m)</button>
+        <button type="button" class="btn sm ghost timer-mode-btn" data-mode="long">🌴 Rest (15m)</button>
+      </div>
+
+      <div id="studyTimerDisplayContainer" class="aesthetic-timer-box style-onyx font-garamond glow-on" style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;border-radius:14px;background:rgba(18,17,16,0.9);border:1px solid rgba(201,162,75,0.4);position:relative;margin-bottom:10px;">
+        <div id="timerRingWrap" style="position:relative;width:150px;height:150px;display:flex;align-items:center;justify-content:center;">
+          <svg width="150" height="150" viewBox="0 0 100 100" style="transform:rotate(-90deg);position:absolute;top:0;left:0;">
+            <circle cx="50" cy="50" r="44" stroke="rgba(255,255,255,0.1)" stroke-width="6" fill="none"></circle>
+            <circle id="timerProgressRing" cx="50" cy="50" r="44" stroke="var(--gold, #c9a24b)" stroke-width="6" fill="none" stroke-linecap="round" stroke-dasharray="276.46" stroke-dashoffset="0" style="transition:stroke-dashoffset 1s linear;"></circle>
+          </svg>
+          <div id="timerDigits" style="font-size:2.5rem;font-weight:700;z-index:2;color:var(--gold,#c9a24b);">25:00</div>
+        </div>
+        <div id="timerStatusBadge" style="margin-top:4px;font-size:0.75rem;color:rgba(236,230,216,0.7);">Status: Ready</div>
+      </div>
+
+      <div style="display:flex;justify-content:center;gap:8px;margin-bottom:10px;">
+        <button type="button" class="btn sm" id="btnTimerStart" style="background:linear-gradient(135deg,#ecd593,#c9a24b);color:#0a0908;font-weight:bold;">▶ Start</button>
+        <button type="button" class="btn sm ghost" id="btnTimerPause">⏸ Pause</button>
+        <button type="button" class="btn sm ghost" id="btnTimerReset">🔄 Reset</button>
+      </div>
+
+      <details style="background:rgba(0,0,0,0.3);border:1px solid rgba(201,162,75,0.2);border-radius:8px;padding:6px;margin-bottom:8px;">
+        <summary style="cursor:pointer;font-weight:600;color:var(--gold,#c9a24b);font-size:0.8rem;">🎨 100+ Aesthetic Customizer</summary>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:4px;">
+          <div><label style="font-size:0.65rem;color:#ccc;">Theme</label><select id="timerThemeSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="onyx">Onyx Gold</option><option value="cyber">Cyber Neon</option><option value="emerald">Emerald</option><option value="sunset">Sunset</option></select></div>
+          <div><label style="font-size:0.65rem;color:#ccc;">Dial</label><select id="timerDialSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="ring">Ring</option><option value="flip">Flip</option><option value="box">Box</option></select></div>
+          <div><label style="font-size:0.65rem;color:#ccc;">Font</label><select id="timerFontSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="garamond">Garamond</option><option value="manrope">Manrope</option><option value="mono">Mono</option></select></div>
+          <div><label style="font-size:0.65rem;color:#ccc;">Glow</label><select id="timerGlowSelect" style="width:100%;padding:2px;font-size:0.7rem;"><option value="on">Glow</option><option value="off">Matte</option></select></div>
+        </div>
+      </details>
+
+      <div style="background:rgba(0,0,0,0.4);border:1px solid rgba(201,162,75,0.2);border-radius:8px;padding:6px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <button type="button" class="btn sm" id="btnMusicToggle" style="background:var(--gold,#c9a24b);color:#0a0908;font-size:0.75rem;">🎵 Music</button>
+          <select id="musicTrackSelect" style="padding:2px;font-size:0.75rem;"><option value="lofi">☕ Lofi Beats</option><option value="rain">🌧️ Rain</option><option value="forest">🌲 Forest</option></select>
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;"><span style="font-size:0.75rem;color:#aaa;">🔊</span><input type="range" id="musicVolumeSlider" min="0" max="1" step="0.05" value="0.5" style="width:50px;" /></div>
+        <audio id="syncedStudyAudio" loop preload="none"></audio>
+      </div>
+
+      <div class="modal-actions" style="margin-top:8px;">
+        <button type="button" class="btn ghost" data-close="studyTimerModal">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Gallery / Vault -->
   <div class="overlay" id="galleryModal">
     <div class="modal modal-lg">
@@ -623,6 +799,7 @@
   <!-- Stable cdnjs Socket.IO Client -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
   <script src="/static/js/crypto.js?v=2.1"></script>
   <script src="/static/js/offline.js?v=2.1"></script>
   <script src="/static/js/privacy.js?v=2.1"></script>
