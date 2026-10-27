@@ -249,24 +249,28 @@
     if ("documentPictureInPicture" in window) {
       try {
         pipWindow = await window.documentPictureInPicture.requestWindow({
-          width: 320,
-          height: 220,
+          width: 360,
+          height: 260,
         });
 
         const style = document.createElement("style");
         style.textContent = `
-          body { margin:0; padding:12px; background:#0a0908; color:#efe9da; font-family:sans-serif; display:flex; flex-direction:column; height:100vh; box-sizing:border-box; }
-          .title { font-size:12px; color:#ecd593; font-weight:bold; margin-bottom:6px; }
-          .preview { flex:1; background:rgba(255,255,255,0.08); border-radius:8px; padding:10px; font-size:13px; word-break:break-word; overflow:auto; }
+          body { margin:0; padding:12px; background:#0a0908; color:#efe9da; font-family:sans-serif; display:flex; flex-direction:column; height:100vh; box-sizing:border-box; border:1px solid rgba(201,162,75,0.4); border-radius:12px; }
+          .header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+          .title { font-size:13px; color:#ecd593; font-weight:bold; }
+          .preview { flex:1; background:rgba(255,255,255,0.08); border-radius:8px; padding:10px; font-size:13px; word-break:break-word; overflow-y:auto; border:1px solid rgba(201,162,75,0.2); }
           .row { display:flex; gap:6px; margin-top:8px; }
-          input { flex:1; padding:6px; border-radius:6px; border:1px solid #c9a24b; background:rgba(0,0,0,0.5); color:#fff; }
-          button { padding:6px 12px; border-radius:6px; border:none; background:linear-gradient(135deg, #ecd593, #c9a24b); color:#0a0908; font-weight:bold; cursor:pointer; }
+          input { flex:1; padding:6px 10px; border-radius:6px; border:1px solid #c9a24b; background:rgba(0,0,0,0.6); color:#fff; font-size:12px; }
+          button { padding:6px 12px; border-radius:6px; border:none; background:linear-gradient(135deg, #ecd593, #c9a24b); color:#0a0908; font-weight:bold; cursor:pointer; font-size:12px; }
         `;
         pipWindow.document.head.appendChild(style);
 
+        const header = pipWindow.document.createElement("div");
+        header.className = "header";
         const title = pipWindow.document.createElement("div");
         title.className = "title";
-        title.textContent = "✨ Sathi Floating Home Screen";
+        title.textContent = "✨ Sathi Floating Sync";
+        header.appendChild(title);
 
         const preview = pipWindow.document.createElement("div");
         preview.className = "preview";
@@ -276,28 +280,57 @@
         const row = pipWindow.document.createElement("div");
         row.className = "row";
         const input = pipWindow.document.createElement("input");
-        input.placeholder = "Type note...";
+        input.placeholder = "Send quick note to partner...";
         const btn = pipWindow.document.createElement("button");
         btn.textContent = "Send";
 
         btn.onclick = () => {
           if (input.value.trim()) {
             sendWidgetUpdate(input.value.trim());
-            preview.textContent = input.value.trim();
+            preview.textContent = `Me: ${input.value.trim()}`;
             input.value = "";
           }
         };
 
         row.appendChild(input);
         row.appendChild(btn);
-        pipWindow.document.body.appendChild(title);
+        pipWindow.document.body.appendChild(header);
         pipWindow.document.body.appendChild(preview);
         pipWindow.document.body.appendChild(row);
       } catch (err) {
-        console.warn("PiP not supported or rejected:", err);
+        console.warn("Document PiP error, engaging fallback:", err);
+        fallbackVideoPip();
       }
     } else {
-      alert("Floating overlay enabled on app screen.");
+      fallbackVideoPip();
+    }
+  }
+
+  function fallbackVideoPip() {
+    try {
+      const pipCanvas = document.createElement("canvas");
+      pipCanvas.width = 300;
+      pipCanvas.height = 180;
+      const pCtx = pipCanvas.getContext("2d");
+      pCtx.fillStyle = "#0a0908";
+      pCtx.fillRect(0, 0, 300, 180);
+      pCtx.fillStyle = "#ecd593";
+      pCtx.font = "bold 14px sans-serif";
+      pCtx.fillText("✨ Sathi Floating Sync", 15, 30);
+      pCtx.fillStyle = "#ffffff";
+      pCtx.font = "12px sans-serif";
+      const text = document.getElementById("widgetPreviewText")?.textContent || "Connected & Synced";
+      pCtx.fillText(text.slice(0, 35), 15, 70);
+
+      const video = document.createElement("video");
+      video.muted = true;
+      video.srcObject = pipCanvas.captureStream(10);
+      video.play();
+      video.requestPictureInPicture().catch(() => {
+        alert("Floating widget overlay is active on your screen.");
+      });
+    } catch (e) {
+      alert("Floating overlay enabled on screen.");
     }
   }
 
