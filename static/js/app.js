@@ -692,15 +692,17 @@ const App = (() => {
 
     state.socket.on("connect", () => {
       state.socket.emit("filmtv_request_sync", { token: state.token });
+      state.socket.emit("request_room_state");
     });
 
-    // ─── New Synced Socket Listeners (YouTube Watch Party, Aesthetic Timer, Study Music, Doc Annotations) ───
+    // ─── New Synced Socket Listeners (YouTube Watch Party, Aesthetic Timer, Study Music, Doc Annotations, Spotify) ───
     state.socket.on("yt_sync", (payload) => handleRemoteYtSync(payload));
     state.socket.on("video_sync", (payload) => handleRemoteVideoSync(payload));
     state.socket.on("timer_sync", (payload) => handleRemoteTimerSync(payload));
     state.socket.on("music_sync", (payload) => handleRemoteMusicSync(payload));
     state.socket.on("doc_annotation_sync", (payload) => handleRemoteDocAnnotationSync(payload));
     state.socket.on("spotify_sync", (payload) => handleRemoteSpotifySync(payload));
+    state.socket.on("room_state", (payload) => handleRoomStateRestoration(payload));
   }
 
   let zoomState = { scale: 1, x: 0, y: 0, lastX: 0, lastY: 0, dragging: false };
@@ -2380,6 +2382,22 @@ const App = (() => {
     const iframe = $("#spotifyIframe");
     if (iframe) iframe.src = payload.embed_url;
     openModal("spotifyModal");
+  }
+
+  function handleRoomStateRestoration(payload) {
+    if (!payload) return;
+    if (payload.timer_state && payload.timer_state.preset) {
+      handleRemoteTimerSync(payload.timer_state);
+      const preset = payload.timer_state.preset;
+      const container = $("#studyTimerDisplayContainer");
+      if (container && preset) {
+        container.className = `aesthetic-timer-box style-${preset} font-garamond glow-on`;
+      }
+    }
+    if (payload.spotify_state && payload.spotify_state.embed_url) {
+      const iframe = $("#spotifyIframe");
+      if (iframe) iframe.src = payload.spotify_state.embed_url;
+    }
   }
 
   return { init };

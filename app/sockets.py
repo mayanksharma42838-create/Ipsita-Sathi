@@ -15,6 +15,9 @@ _sid_lock = threading.Lock()
 _sid_to_member: dict[str, int] = {}
 _member_to_sids: dict[int, set[str]] = {}
 
+_room_timer_state: dict[str, dict] = {}
+_room_spotify_state: dict[str, dict] = {}
+
 
 def _bind_sid(sid: str, member_id: int) -> None:
     with _sid_lock:
@@ -427,19 +430,30 @@ def on_video_sync(data):
 
 @socketio.on("timer_sync")
 def on_timer_sync(data):
-    """Broadcast Aesthetic Study Pomodoro Timer state (start, pause, reset, tick, set_mode, theme)."""
+    """Broadcast & persist Aesthetic Study Timer state across room members."""
     member = _member_from_sid()
     if not member or not isinstance(data, dict):
         return
+    room_id = member.room.room_id
+    current_state = _room_timer_state.setdefault(room_id, {
+        "action": "reset",
+        "time_left": 1500,
+        "mode": "work",
+        "preset": "onyx",
+        "dial": "ring",
+        "font": "garamond",
+        "glow": "on"
+    })
+    for k in ("action", "time_left", "mode", "preset", "dial", "font", "glow"):
+        if k in data and data[k] is not None:
+            current_state[k] = data[k]
+
     payload = {
-        "action": data.get("action"),
-        "time_left": data.get("time_left"),
-        "mode": data.get("mode"),
-        "preset": data.get("preset"),
+        **current_state,
         "sender_id": member.id,
         "sender_name": member.display_name,
     }
-    emit("timer_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+    emit("timer_sync", payload, room=f"room:{room_id}", include_self=False)
 
 
 @socketio.on("music_sync")
@@ -476,13 +490,33 @@ def on_doc_annotation_sync(data):
 
 @socketio.on("spotify_sync")
 def on_spotify_sync(data):
-    """Broadcast integrated Spotify player embed URL to partner."""
+    """Broadcast & persist integrated Spotify player embed URL across room members."""
     member = _member_from_sid()
     if not member or not isinstance(data, dict):
         return
+    room_id = member.room.room_id
+    embed_url = data.get("embed_url")
+    if embed_url:
+        _room_spotify_state[room_id] = {"embed_url": embed_url}
+
     payload = {
-        "embed_url": data.get("embed_url"),
+        "embed_url": embed_url,
         "sender_id": member.id,
         "sender_name": member.display_name,
     }
-    emit("spotify_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
+    emit("spotify_sync", payload, room=f"room:{room_id}", include_self=False)
+
+
+@socketio.on("request_room_state")
+def on_request_room_state(_data=None):
+    """Restore active room timer theme, time left, and Spotify embed URL on connect/reconnect."""
+    member = _member_from_sid()
+    if not member:
+        return
+    room_id = member.room.room_id
+    timer_st = _room_timer_state.get(room_id, {})
+    spotify_st = _room_spotify_state.get(room_id, {})
+    emit("room_state", {
+        "timer_state": timer_st,
+        "spotify_state": spotify_st,
+    })

@@ -75,7 +75,7 @@ class Config:
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "0") == "1"
 
-    MAX_ROOM_MEMBERS = 2
+    MAX_ROOM_MEMBERS = int(os.environ.get("MAX_ROOM_MEMBERS", 2))
     MIN_PASSWORD_LENGTH = int(os.environ.get("MIN_PASSWORD_LENGTH", 12))
     SESSION_IDLE_RESUME_SECONDS = int(os.environ.get("SESSION_IDLE_RESUME_SECONDS", 3600))
 
