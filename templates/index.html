@@ -878,7 +878,7 @@
 
       <!-- Embedded In-App Player Container -->
       <div style="width:100%;height:380px;border-radius:10px;overflow:hidden;border:1px solid rgba(201,162,75,0.3);background:#000;position:relative;" id="ottPlayerContainer">
-        <iframe id="ottYtIframe" src="https://www.youtube.com/embed/jfKfPfyJRdk?autoplay=1&enablejsapi=1" width="100%" height="100%" frameborder="0" allowfullscreen="" allow="autoplay; encrypted-media; picture-in-picture" loading="lazy" style="width:100%;height:100%;display:block;"></iframe>
+        <iframe id="ottYtIframe" src="https://www.youtube.com/embed/jfKfPfyJRdk?autoplay=1&enablejsapi=1" width="100%" height="100%" frameborder="0" allowfullscreen="" allow="autoplay; encrypted-media; picture-in-picture" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-encrypted-media" style="width:100%;height:100%;display:block;"></iframe>
         <video id="ottLocalVideo" controls style="width:100%;height:100%;display:none;background:#000;"></video>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;">

@@ -2470,18 +2470,12 @@ const App = (() => {
         cards.forEach((c) => c.classList.remove("active"));
         card.classList.add("active");
         const url = card.dataset.url;
-        const type = card.dataset.type;
-
-        if (type === "ott") {
-          window.location.href = url;
-        } else {
-          if (iframe && video) {
-            video.style.display = "none";
-            iframe.style.display = "block";
-            iframe.src = url;
-          }
+        if (iframe && video) {
+          video.style.display = "none";
+          iframe.style.display = "block";
+          iframe.src = url;
         }
-        state.socket?.emit("ott_media_sync", { embed_url: url, is_video: false, type });
+        state.socket?.emit("ott_media_sync", { embed_url: url, is_video: false });
       };
     });
 
@@ -2490,14 +2484,9 @@ const App = (() => {
         const raw = input.value.trim();
         if (!raw) return;
         const embedUrl = parseYtEmbed(raw);
-        if (embedUrl) {
-          if (iframe && video) {
-            video.style.display = "none";
-            iframe.style.display = "block";
-            iframe.src = embedUrl;
-          }
-          state.socket?.emit("ott_media_sync", { embed_url: embedUrl, is_video: false });
-        } else if (raw.endsWith(".mp4") || raw.endsWith(".webm") || raw.endsWith(".ogg")) {
+        const finalUrl = embedUrl || (raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://www.google.com/search?q=${encodeURIComponent(raw)}`);
+        
+        if (raw.endsWith(".mp4") || raw.endsWith(".webm") || raw.endsWith(".ogg")) {
           if (iframe && video) {
             iframe.style.display = "none";
             video.style.display = "block";
@@ -2505,6 +2494,13 @@ const App = (() => {
             video.play().catch(() => {});
           }
           state.socket?.emit("ott_media_sync", { video_src: raw, is_video: true });
+        } else {
+          if (iframe && video) {
+            video.style.display = "none";
+            iframe.style.display = "block";
+            iframe.src = finalUrl;
+          }
+          state.socket?.emit("ott_media_sync", { embed_url: finalUrl, is_video: false });
         }
       };
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") btnLoad.click(); });
