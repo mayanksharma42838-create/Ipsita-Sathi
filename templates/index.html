@@ -165,7 +165,7 @@
         <div class="toolbar wa-toolbar">
           <button type="button" class="btn ghost icon-btn" id="btnWatchPartyModule" title="Sathi OTT Watch Party">🎬</button>
           <button type="button" class="btn ghost icon-btn" id="btnWatchParty" title="YouTube & Video Watch Party">📺</button>
-          <button type="button" class="btn ghost icon-btn" id="btnSpotify" title="Integrated Spotify Music">🎵</button>
+          <button type="button" class="btn ghost icon-btn" id="btnSoundCloud" title="Integrated SoundCloud Music">☁️</button>
           <button type="button" class="btn ghost icon-btn" id="btnStudyTimer" title="Aesthetic Study Timer & Synced Music">⏱️</button>
           <button type="button" class="btn ghost icon-btn" id="btnDocWorkspace" title="Document & Study Workspace">📑</button>
           <button type="button" class="btn ghost icon-btn" id="btnGallery" title="Room Vault">🖼️</button>
@@ -186,8 +186,8 @@
             <div class="dropdown-item" onclick="document.getElementById('btnWatchParty').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
               <span>📺</span> YouTube Watch Party
             </div>
-            <div class="dropdown-item" onclick="document.getElementById('btnSpotify').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#1db954;font-size:0.9rem;">
-              <span>🎵</span> Spotify Integrated Music
+            <div class="dropdown-item" onclick="document.getElementById('btnSoundCloud').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ff5500;font-size:0.9rem;font-weight:bold;">
+              <span>☁️</span> SoundCloud Music Player
             </div>
             <div class="dropdown-item" onclick="document.getElementById('btnStudyTimer').click()" style="padding:10px 16px;display:flex;align-items:center;gap:10px;cursor:pointer;color:#ece6d8;font-size:0.9rem;">
               <span>⏱️</span> Study Timer & Music
@@ -748,12 +748,12 @@
         </div>
       </div>
 
-      <!-- Integrated Spotify Search & Player System Inside Timer -->
-      <div style="background:rgba(13,17,23,0.9);border:1px solid #1db954;border-radius:10px;padding:8px;margin-bottom:8px;">
+      <!-- Integrated SoundCloud Search & Player System Inside Timer -->
+      <div style="background:rgba(13,17,23,0.9);border:1px solid #ff5500;border-radius:10px;padding:8px;margin-bottom:8px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
           <div style="display:flex;align-items:center;gap:6px;">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#1db954"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.899 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.019zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141 C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C13.56 8.4 7.08 8.16 3.36 9.301c-.6.18-.1.2-.841-.36-.66-.18-.42-.66-.24-1.261C6.06 6.36 13.2 6.6 17.76 9.36c.54.3.72.961.42 1.5-.3.54-.96.72-1.5.42z"/></svg>
-            <span style="font-weight:bold;color:#1db954;font-size:0.8rem;">Spotify In-Timer Music & Search</span>
+            <span style="font-size:1.1rem;">☁️</span>
+            <span style="font-weight:bold;color:#ff5500;font-size:0.8rem;">SoundCloud In-Timer Music & Search</span>
           </div>
           <div style="display:flex;align-items:center;gap:4px;">
             <button type="button" class="btn sm" id="btnMusicToggle" style="background:var(--gold,#c9a24b);color:#0a0908;font-size:0.7rem;padding:2px 6px;font-weight:bold;">🎵 Lofi Stream</button>
@@ -762,23 +762,22 @@
         </div>
 
         <div style="display:flex;gap:4px;margin-bottom:6px;">
-          <input type="text" id="timerSpotifySearchInput" placeholder="Search Spotify song, artist, or paste playlist URL..." style="flex:1;padding:4px 8px;font-size:0.75rem;border-radius:6px;background:#0a0908;border:1px solid #1db954;color:#fff;" />
-          <button type="button" class="btn sm" id="btnTimerSpotifySearch" style="background:#1db954;color:#000;font-weight:bold;font-size:0.75rem;padding:4px 10px;">🔍 Play</button>
+          <input type="text" id="timerSoundCloudSearchInput" placeholder="Search SoundCloud track, artist, or paste SoundCloud URL..." style="flex:1;padding:4px 8px;font-size:0.75rem;border-radius:6px;background:#0a0908;border:1px solid #ff5500;color:#fff;" />
+          <button type="button" class="btn sm" id="btnTimerSoundCloudSearch" style="background:#ff5500;color:#fff;font-weight:bold;font-size:0.75rem;padding:4px 10px;">🔍 Play</button>
         </div>
 
-        <!-- Curated Vibe Quick Badges -->
-        <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;" id="timerSpotifyVibeRow">
-          <button type="button" class="btn sm ghost sp-vibe-btn active" data-spotify-id="37i9dQZF1DX8Ueb1S3V3P8" style="font-size:0.72rem;padding:2px 6px;">☕ Lofi Beats</button>
-          <button type="button" class="btn sm ghost sp-vibe-btn" data-spotify-id="37i9dQZF1DWZeKCadA3A2A" style="font-size:0.72rem;padding:2px 6px;">🌌 Deep Focus</button>
-          <button type="button" class="btn sm ghost sp-vibe-btn" data-spotify-id="37i9dQZF1DXcBWIGoYBM5M" style="font-size:0.72rem;padding:2px 6px;">🌸 Chillhop</button>
-          <button type="button" class="btn sm ghost sp-vibe-btn" data-spotify-id="37i9dQZF1DX8NTLI29BXZa" style="font-size:0.72rem;padding:2px 6px;">🎼 Classical</button>
-          <button type="button" class="btn sm ghost sp-vibe-btn" data-spotify-id="37i9dQZF1DX2923P5S1A4d" style="font-size:0.72rem;padding:2px 6px;">🏯 Anime Lofi</button>
-          <button type="button" class="btn sm ghost sp-vibe-btn" data-spotify-id="37i9dQZF1DXbvA9C3m9824" style="font-size:0.72rem;padding:2px 6px;">🌧️ Rainy Lofi</button>
+        <!-- Curated SoundCloud Vibe Quick Badges -->
+        <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:4px;margin-bottom:6px;" id="timerSoundCloudVibeRow">
+          <button type="button" class="btn sm ghost sc-vibe-btn active" data-soundcloud-url="https://soundcloud.com/lofi_girl/sets/lofi-hip-hop-music-to-study-relax-to" style="font-size:0.72rem;padding:2px 6px;">☕ Lofi Beats</button>
+          <button type="button" class="btn sm ghost sc-vibe-btn" data-soundcloud-url="https://soundcloud.com/chilledcow/sets/chill-study-beats" style="font-size:0.72rem;padding:2px 6px;">🌌 Chill Study</button>
+          <button type="button" class="btn sm ghost sc-vibe-btn" data-soundcloud-url="https://soundcloud.com/ambient-music/sets/deep-focus-ambient" style="font-size:0.72rem;padding:2px 6px;">🌸 Deep Focus</button>
+          <button type="button" class="btn sm ghost sc-vibe-btn" data-soundcloud-url="https://soundcloud.com/synthwave-official/sets/synthwave-drive" style="font-size:0.72rem;padding:2px 6px;">🌃 Synthwave</button>
+          <button type="button" class="btn sm ghost sc-vibe-btn" data-soundcloud-url="https://soundcloud.com/piano-focus/sets/relaxing-study-piano" style="font-size:0.72rem;padding:2px 6px;">🎼 Study Piano</button>
         </div>
 
-        <!-- Embedded Spotify Player -->
-        <div style="width:100%;height:152px;border-radius:8px;overflow:hidden;border:1px solid rgba(29,185,84,0.3);background:#000;" id="timerSpotifyIframeWrap">
-          <iframe id="timerSpotifyIframe" src="https://open.spotify.com/embed/playlist/37i9dQZF1DX8Ueb1S3V3P8?utm_source=generator&theme=0" width="100%" height="100%" frameborder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-encrypted-media"></iframe>
+        <!-- Embedded SoundCloud Player -->
+        <div style="width:100%;height:152px;border-radius:8px;overflow:hidden;border:1px solid rgba(255,85,0,0.4);background:#000;" id="timerSoundCloudIframeWrap">
+          <iframe id="timerSoundCloudIframe" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/playlists/1149202570&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false" width="100%" height="100%" frameborder="0" allow="autoplay" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-encrypted-media"></iframe>
         </div>
       </div>
 
@@ -786,35 +785,34 @@
         <button type="button" class="btn ghost" data-close="studyTimerModal">Close</button>
       </div>
     </div>
-  <!-- Integrated Spotify Music Player Modal -->
-  <div class="overlay" id="spotifyModal">
-    <div class="modal modal-lg" style="max-width:680px;background:#0d1117;border:1px solid #1db954;box-shadow:0 0 30px rgba(29,185,84,0.3);">
+  <!-- Integrated SoundCloud Music Player Modal -->
+  <div class="overlay" id="soundCloudModal">
+    <div class="modal modal-lg" style="max-width:680px;background:#0d1117;border:1px solid #ff5500;box-shadow:0 0 30px rgba(255,85,0,0.3);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
         <div style="display:flex;align-items:center;gap:8px;">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="#1db954"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.899 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.019zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141 C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C13.56 8.4 7.08 8.16 3.36 9.301c-.6.18-.1.2-.841-.36-.66-.18-.42-.66-.24-1.261C6.06 6.36 13.2 6.6 17.76 9.36c.54.3.72.961.42 1.5-.3.54-.96.72-1.5.42z"/></svg>
-          <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:#1db954;margin:0;">Integrated Spotify Music</h3>
+          <span style="font-size:1.4rem;">☁️</span>
+          <h3 style="font-family:'Cormorant Garamond',serif;font-size:1.5rem;color:#ff5500;margin:0;">Integrated SoundCloud Music</h3>
         </div>
-        <button type="button" class="btn sm ghost" data-close="spotifyModal" style="color:#aaa;">✕ Close</button>
+        <button type="button" class="btn sm ghost" data-close="soundCloudModal" style="color:#aaa;">✕ Close</button>
       </div>
 
-      <!-- Spotify Link or Playlist Search Bar -->
+      <!-- SoundCloud Link or Search Bar -->
       <div style="display:flex;gap:6px;margin-bottom:10px;">
-        <input type="text" id="spotifyUrlInput" placeholder="Paste Spotify track, album, or playlist link..." style="flex:1;padding:6px 10px;border-radius:6px;background:#121110;border:1px solid #1db954;color:#fff;font-size:0.8rem;" />
-        <button type="button" class="btn sm" id="btnLoadSpotifyUrl" style="background:#1db954;color:#000;font-weight:bold;padding:6px 14px;">▶ Play Link</button>
+        <input type="text" id="soundCloudUrlInput" placeholder="Paste SoundCloud track, artist, or playlist link..." style="flex:1;padding:6px 10px;border-radius:6px;background:#121110;border:1px solid #ff5500;color:#fff;font-size:0.8rem;" />
+        <button type="button" class="btn sm" id="btnLoadSoundCloudUrl" style="background:#ff5500;color:#fff;font-weight:bold;padding:6px 14px;">▶ Play Link</button>
       </div>
 
-      <!-- Aesthetic Spotify Playlist Presets -->
-      <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;" id="spotifyPresetContainer">
-        <button type="button" class="btn sm ghost sp-preset active" data-spotify-id="37i9dQZF1DX8Ueb1S3V3P8" style="font-size:0.75rem;padding:3px 8px;">☕ Lofi Beats</button>
-        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DWZeKCadA3A2A" style="font-size:0.75rem;padding:3px 8px;">🌌 Deep Focus</button>
-        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DXcBWIGoYBM5M" style="font-size:0.75rem;padding:3px 8px;">🌃 Top Hits</button>
-        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DX0SM0L3A3fA6" style="font-size:0.75rem;padding:3px 8px;">🌸 Romantic Duets</button>
-        <button type="button" class="btn sm ghost sp-preset" data-spotify-id="37i9dQZF1DXdLEN2aqioXM" style="font-size:0.75rem;padding:3px 8px;">🌃 Synthwave Study</button>
+      <!-- Curated SoundCloud Presets -->
+      <div style="display:flex;gap:4px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;" id="soundCloudPresetContainer">
+        <button type="button" class="btn sm ghost sc-preset active" data-soundcloud-url="https://soundcloud.com/lofi_girl/sets/lofi-hip-hop-music-to-study-relax-to" style="font-size:0.75rem;padding:3px 8px;">☕ Lofi Beats</button>
+        <button type="button" class="btn sm ghost sc-preset" data-soundcloud-url="https://soundcloud.com/chilledcow/sets/chill-study-beats" style="font-size:0.75rem;padding:3px 8px;">🌌 Chill Study</button>
+        <button type="button" class="btn sm ghost sc-preset" data-soundcloud-url="https://soundcloud.com/ambient-music/sets/deep-focus-ambient" style="font-size:0.75rem;padding:3px 8px;">🌸 Deep Focus</button>
+        <button type="button" class="btn sm ghost sc-preset" data-soundcloud-url="https://soundcloud.com/synthwave-official/sets/synthwave-drive" style="font-size:0.75rem;padding:3px 8px;">🌃 Synthwave</button>
       </div>
 
-      <!-- Embedded Spotify Web Player IFrame -->
-      <div id="spotifyIframeWrap" style="width:100%;height:360px;border-radius:10px;overflow:hidden;border:1px solid rgba(29,185,84,0.4);background:#000;">
-        <iframe id="spotifyIframe" src="https://open.spotify.com/embed/playlist/37i9dQZF1DX8Ueb1S3V3P8?utm_source=generator&theme=0" width="100%" height="100%" frameborder="0" allowfullscreen="" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-encrypted-media"></iframe>
+      <!-- Embedded SoundCloud Web Player IFrame -->
+      <div id="soundCloudIframeWrap" style="width:100%;height:360px;border-radius:10px;overflow:hidden;border:1px solid rgba(255,85,0,0.4);background:#000;">
+        <iframe id="soundCloudIframe" src="https://w.soundcloud.com/player/?url=https%3A//api.soundcloud.com/playlists/1149202570&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false" width="100%" height="100%" frameborder="0" allow="autoplay" loading="lazy" sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-encrypted-media"></iframe>
       </div>
     </div>
   </div>

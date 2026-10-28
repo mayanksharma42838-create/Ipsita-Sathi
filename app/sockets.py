@@ -16,7 +16,7 @@ _sid_to_member: dict[str, int] = {}
 _member_to_sids: dict[int, set[str]] = {}
 
 _room_timer_state: dict[str, dict] = {}
-_room_spotify_state: dict[str, dict] = {}
+_room_soundcloud_state: dict[str, dict] = {}
 
 
 def _bind_sid(sid: str, member_id: int) -> None:
@@ -487,23 +487,23 @@ def on_doc_annotation_sync(data):
     emit("doc_annotation_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
 
 
-@socketio.on("spotify_sync")
-def on_spotify_sync(data):
-    """Broadcast & persist integrated Spotify player embed URL across room members."""
+@socketio.on("soundcloud_sync")
+def on_soundcloud_sync(data):
+    """Broadcast & persist integrated SoundCloud player embed URL across room members."""
     member = _member_from_sid()
     if not member or not isinstance(data, dict):
         return
     room_id = member.room.room_id
     embed_url = data.get("embed_url")
     if embed_url:
-        _room_spotify_state[room_id] = {"embed_url": embed_url}
+        _room_soundcloud_state[room_id] = {"embed_url": embed_url}
 
     payload = {
         "embed_url": embed_url,
         "sender_id": member.id,
         "sender_name": member.display_name,
     }
-    emit("spotify_sync", payload, room=f"room:{room_id}", include_self=False)
+    emit("soundcloud_sync", payload, room=f"room:{room_id}", include_self=False)
 
 
 @socketio.on("ott_media_sync")
@@ -524,14 +524,14 @@ def on_ott_media_sync(data):
 
 @socketio.on("request_room_state")
 def on_request_room_state(_data=None):
-    """Restore active room timer theme, time left, and Spotify embed URL on connect/reconnect."""
+    """Restore active room timer theme, time left, and SoundCloud embed URL on connect/reconnect."""
     member = _member_from_sid()
     if not member:
         return
     room_id = member.room.room_id
     timer_st = _room_timer_state.get(room_id, {})
-    spotify_st = _room_spotify_state.get(room_id, {})
+    soundcloud_st = _room_soundcloud_state.get(room_id, {})
     emit("room_state", {
         "timer_state": timer_st,
-        "spotify_state": spotify_st,
+        "soundcloud_state": soundcloud_st,
     })

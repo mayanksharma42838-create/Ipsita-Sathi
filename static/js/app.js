@@ -701,7 +701,7 @@ const App = (() => {
     state.socket.on("timer_sync", (payload) => handleRemoteTimerSync(payload));
     state.socket.on("music_sync", (payload) => handleRemoteMusicSync(payload));
     state.socket.on("doc_annotation_sync", (payload) => handleRemoteDocAnnotationSync(payload));
-    state.socket.on("spotify_sync", (payload) => handleRemoteSpotifySync(payload));
+    state.socket.on("soundcloud_sync", (payload) => handleRemoteSoundCloudSync(payload));
     state.socket.on("ott_media_sync", (payload) => handleRemoteOttMediaSync(payload));
     state.socket.on("room_state", (payload) => handleRoomStateRestoration(payload));
   }
@@ -1726,10 +1726,10 @@ const App = (() => {
       else openFilmTV();
     });
 
-    $("#btnSpotify")?.addEventListener("click", () => {
+    $("#btnSoundCloud")?.addEventListener("click", () => {
       $("#headerDropdownMenu")?.classList.add("hidden");
-      openModal("spotifyModal");
-      initSpotifyPlayer();
+      openModal("soundCloudModal");
+      initSoundCloudPlayer();
     });
 
     $("#btnStudyTimer")?.addEventListener("click", () => {
@@ -2109,51 +2109,43 @@ const App = (() => {
       };
     });
 
-    // In-Timer Spotify Search & Vibe Badges System
-    const timerSpIframe = $("#timerSpotifyIframe");
-    const timerSpInput = $("#timerSpotifySearchInput");
-    const btnTimerSpSearch = $("#btnTimerSpotifySearch");
-    const spVibeBtns = $$("#timerSpotifyVibeRow .sp-vibe-btn");
+    // In-Timer SoundCloud Search & Vibe Badges System
+    const timerScIframe = $("#timerSoundCloudIframe");
+    const timerScInput = $("#timerSoundCloudSearchInput");
+    const btnTimerScSearch = $("#btnTimerSoundCloudSearch");
+    const scVibeBtns = $$("#timerSoundCloudVibeRow .sc-vibe-btn");
 
-    function parseSpotifyEmbed(url) {
-      if (!url) return null;
-      if (url.includes("spotify.com/embed/")) return url;
-      const match = url.match(/spotify\.com\/(playlist|track|album|artist)\/([a-zA-Z0-9]+)/);
-      if (match) {
-        return `https://open.spotify.com/embed/${match[1]}/${match[2]}?utm_source=generator&theme=0`;
-      }
-      return null;
+    function getSoundCloudEmbedUrl(targetUrl) {
+      if (!targetUrl) return null;
+      const clean = targetUrl.startsWith("http") ? targetUrl : `https://soundcloud.com/search?q=${encodeURIComponent(targetUrl)}`;
+      return `https://w.soundcloud.com/player/?url=${encodeURIComponent(clean)}&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
     }
 
-    if (btnTimerSpSearch && timerSpInput && timerSpIframe) {
-      btnTimerSpSearch.onclick = () => {
-        const q = timerSpInput.value.trim();
+    if (btnTimerScSearch && timerScInput && timerScIframe) {
+      btnTimerScSearch.onclick = () => {
+        const q = timerScInput.value.trim();
         if (!q) return;
-        let embedUrl = parseSpotifyEmbed(q);
-        if (!embedUrl) {
-          // If query is text, construct search embed view
-          embedUrl = `https://open.spotify.com/embed/playlist/37i9dQZF1DX8Ueb1S3V3P8?utm_source=generator&theme=0`;
-        }
-        timerSpIframe.src = embedUrl;
-        const mainSpIframe = $("#spotifyIframe");
-        if (mainSpIframe) mainSpIframe.src = embedUrl;
-        state.socket?.emit("spotify_sync", { embed_url: embedUrl });
+        const embedUrl = getSoundCloudEmbedUrl(q);
+        timerScIframe.src = embedUrl;
+        const mainScIframe = $("#soundCloudIframe");
+        if (mainScIframe) mainScIframe.src = embedUrl;
+        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
       };
-      timerSpInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") btnTimerSpSearch.click();
+      timerScInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") btnTimerScSearch.click();
       });
     }
 
-    spVibeBtns.forEach((btn) => {
+    scVibeBtns.forEach((btn) => {
       btn.onclick = () => {
-        spVibeBtns.forEach((b) => b.classList.remove("active"));
+        scVibeBtns.forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
-        const id = btn.dataset.spotifyId;
-        const embedUrl = `https://open.spotify.com/embed/playlist/${id}?utm_source=generator&theme=0`;
-        if (timerSpIframe) timerSpIframe.src = embedUrl;
-        const mainSpIframe = $("#spotifyIframe");
-        if (mainSpIframe) mainSpIframe.src = embedUrl;
-        state.socket?.emit("spotify_sync", { embed_url: embedUrl });
+        const url = btn.dataset.soundcloudUrl;
+        const embedUrl = getSoundCloudEmbedUrl(url);
+        if (timerScIframe) timerScIframe.src = embedUrl;
+        const mainScIframe = $("#soundCloudIframe");
+        if (mainScIframe) mainScIframe.src = embedUrl;
+        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
       };
     });
 
@@ -2292,43 +2284,43 @@ const App = (() => {
     });
   }
 
-  function initSpotifyPlayer() {
-    const iframe = $("#spotifyIframe");
-    const input = $("#spotifyUrlInput");
-    const btnLoad = $("#btnLoadSpotifyUrl");
-    const presets = $$("#spotifyPresetContainer .sp-preset");
+  function initSoundCloudPlayer() {
+    const iframe = $("#soundCloudIframe");
+    const input = $("#soundCloudUrlInput");
+    const btnLoad = $("#btnLoadSoundCloudUrl");
+    const presets = $$("#soundCloudPresetContainer .sc-preset");
 
-    function parseSpotifyEmbed(url) {
-      if (!url) return null;
-      if (url.includes("spotify.com/embed/")) return url;
-      const match = url.match(/spotify\.com\/(playlist|track|album|artist)\/([a-zA-Z0-9]+)/);
-      if (match) {
-        return `https://open.spotify.com/embed/${match[1]}/${match[2]}?utm_source=generator&theme=0`;
-      }
-      return null;
+    function getSoundCloudEmbedUrl(targetUrl) {
+      if (!targetUrl) return null;
+      const clean = targetUrl.startsWith("http") ? targetUrl : `https://soundcloud.com/search?q=${encodeURIComponent(targetUrl)}`;
+      return `https://w.soundcloud.com/player/?url=${encodeURIComponent(clean)}&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
     }
 
     if (btnLoad && input && iframe) {
       btnLoad.onclick = () => {
         const url = input.value.trim();
-        const embedUrl = parseSpotifyEmbed(url);
-        if (embedUrl) {
-          iframe.src = embedUrl;
-          state.socket?.emit("spotify_sync", { embed_url: embedUrl });
-        } else {
-          alert("Invalid Spotify URL. Paste a valid Spotify track, album, or playlist link!");
-        }
+        if (!url) return;
+        const embedUrl = getSoundCloudEmbedUrl(url);
+        iframe.src = embedUrl;
+        const timerIframe = $("#timerSoundCloudIframe");
+        if (timerIframe) timerIframe.src = embedUrl;
+        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
       };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") btnLoad.click();
+      });
     }
 
     presets.forEach((btn) => {
       btn.onclick = () => {
         presets.forEach((b) => b.classList.remove("active"));
         btn.classList.add("active");
-        const id = btn.dataset.spotifyId;
-        const embedUrl = `https://open.spotify.com/embed/playlist/${id}?utm_source=generator&theme=0`;
+        const url = btn.dataset.soundcloudUrl;
+        const embedUrl = getSoundCloudEmbedUrl(url);
         if (iframe) iframe.src = embedUrl;
-        state.socket?.emit("spotify_sync", { embed_url: embedUrl });
+        const timerIframe = $("#timerSoundCloudIframe");
+        if (timerIframe) timerIframe.src = embedUrl;
+        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
       };
     });
   }
@@ -2441,11 +2433,11 @@ const App = (() => {
     FilmTV.openStage();
   }
 
-  function handleRemoteSpotifySync(payload) {
+  function handleRemoteSoundCloudSync(payload) {
     if (!payload || !payload.embed_url) return;
-    const iframe = $("#spotifyIframe");
+    const iframe = $("#soundCloudIframe");
     if (iframe) iframe.src = payload.embed_url;
-    const timerIframe = $("#timerSpotifyIframe");
+    const timerIframe = $("#timerSoundCloudIframe");
     if (timerIframe) timerIframe.src = payload.embed_url;
   }
 
@@ -2545,9 +2537,11 @@ const App = (() => {
         container.className = `aesthetic-timer-box style-${preset} font-garamond glow-on`;
       }
     }
-    if (payload.spotify_state && payload.spotify_state.embed_url) {
-      const iframe = $("#spotifyIframe");
-      if (iframe) iframe.src = payload.spotify_state.embed_url;
+    if (payload.soundcloud_state && payload.soundcloud_state.embed_url) {
+      const iframe = $("#soundCloudIframe");
+      if (iframe) iframe.src = payload.soundcloud_state.embed_url;
+      const timerIframe = $("#timerSoundCloudIframe");
+      if (timerIframe) timerIframe.src = payload.soundcloud_state.embed_url;
     }
   }
 
