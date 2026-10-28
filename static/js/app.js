@@ -2470,12 +2470,18 @@ const App = (() => {
         cards.forEach((c) => c.classList.remove("active"));
         card.classList.add("active");
         const url = card.dataset.url;
-        if (iframe && video) {
-          video.style.display = "none";
-          iframe.style.display = "block";
-          iframe.src = url;
+        const type = card.dataset.type;
+
+        if (type === "ott") {
+          window.location.href = url;
+        } else {
+          if (iframe && video) {
+            video.style.display = "none";
+            iframe.style.display = "block";
+            iframe.src = url;
+          }
         }
-        state.socket?.emit("ott_media_sync", { embed_url: url, is_video: false });
+        state.socket?.emit("ott_media_sync", { embed_url: url, is_video: false, type });
       };
     });
 

@@ -136,13 +136,12 @@ def on_filmtv_control(data):
     position = data.get("position")
 
     if (
-        not room.filmtv_source
-        or room.filmtv_host_id != member.id
-        or action not in {"play", "pause", "seek", "heartbeat"}
+        action not in {"play", "pause", "seek", "heartbeat"}
         or not rate_limit(f"filmtv_control:{member.id}", *current_app.config["RL_SOCKET"])
     ):
         return
 
+    room.filmtv_host_id = member.id
     if position is not None:
         try:
             parsed_position = float(position)

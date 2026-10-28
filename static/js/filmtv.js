@@ -152,14 +152,14 @@ const FilmTV = (() => {
   }
 
   function emitYouTubeControl(action, position) {
-    if (applyingRemote || Date.now() < remoteControlsSuppressedUntil || !isHost || !socket) return;
+    if (applyingRemote || Date.now() < remoteControlsSuppressedUntil || !socket) return;
     socket.emit("filmtv_control", { action, position });
   }
 
   function startYouTubeMonitor() {
     if (youtubeMonitor) window.clearInterval(youtubeMonitor);
     youtubeMonitor = window.setInterval(() => {
-      if (!youtubePlayer || !isHost || youtubePlayer.getPlayerState() !== window.YT.PlayerState.PLAYING) return;
+      if (!youtubePlayer || youtubePlayer.getPlayerState() !== window.YT.PlayerState.PLAYING) return;
       const position = youtubePlayer.getCurrentTime();
       const now = Date.now();
       if (lastYoutubePosition !== null) {
@@ -195,9 +195,9 @@ const FilmTV = (() => {
         youtubePlayer = new YT.Player(placeholder, {
           videoId,
           playerVars: {
-            autoplay: 0,
-            controls: isHost ? 1 : 0,
-            disablekb: isHost ? 0 : 1,
+            autoplay: 1,
+            controls: 1,
+            disablekb: 0,
             enablejsapi: 1,
             origin: window.location.origin,
           },
@@ -211,7 +211,7 @@ const FilmTV = (() => {
               reject(new Error("YouTube could not load this video"));
             },
             onStateChange: (event) => {
-              if (!isHost || applyingRemote || Date.now() < remoteControlsSuppressedUntil) return;
+              if (applyingRemote || Date.now() < remoteControlsSuppressedUntil) return;
               if (event.data === YT.PlayerState.PLAYING) {
                 emitYouTubeControl("play", youtubePlayer.getCurrentTime());
               } else if (event.data === YT.PlayerState.PAUSED) {
