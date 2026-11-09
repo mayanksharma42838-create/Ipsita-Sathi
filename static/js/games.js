@@ -9,6 +9,7 @@
   let gameSocket = null;
   let memberId = null;
   let activeTab = "hub";
+  let initialized = false;
 
   // ─── Overcooked Mini-Game State ───
   let ocCanvas = null;
@@ -36,14 +37,23 @@
   let ccSelected = null;
 
   function initGames(socket, currentMemberId) {
+    if (gameSocket && gameSocket !== socket) {
+      gameSocket.off("game_action", handleRemoteGameAction);
+      gameSocket.off("game_score_update", handleRemoteScoreUpdate);
+    }
     gameSocket = socket;
     memberId = currentMemberId;
 
-    bindGameTabEvents();
-    initOvercookedCanvas();
-    initCandyCrushCanvas();
+    if (!initialized) {
+      bindGameTabEvents();
+      initOvercookedCanvas();
+      initCandyCrushCanvas();
+      initialized = true;
+    }
 
     if (gameSocket) {
+      gameSocket.off("game_action", handleRemoteGameAction);
+      gameSocket.off("game_score_update", handleRemoteScoreUpdate);
       gameSocket.on("game_action", handleRemoteGameAction);
       gameSocket.on("game_score_update", handleRemoteScoreUpdate);
     }
@@ -59,16 +69,6 @@
       });
     });
 
-    const btnShareCode = document.getElementById("btnShareGameCode");
-    if (btnShareCode) {
-      btnShareCode.addEventListener("click", () => {
-        const code = document.getElementById("gameCodeInput")?.value || "";
-        if (code && window.AppSendMessage) {
-          window.AppSendMessage(`🎮 Join my Co-Op session! Room Code / Link: ${code}`);
-          alert("Co-op room link shared to partner!");
-        }
-      });
-    }
   }
   function showGameView(gameId) {
     if (!gameId) return;

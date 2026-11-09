@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import math
+import time
 
 import eventlet
 from flask import current_app, request
@@ -16,7 +17,12 @@ _sid_to_member: dict[str, int] = {}
 _member_to_sids: dict[int, set[str]] = {}
 
 _room_timer_state: dict[str, dict] = {}
-_room_soundcloud_state: dict[str, dict] = {}
+_room_music_state: dict[str, dict] = {}
+
+
+def clear_room_ephemeral_state(room_id: str) -> None:
+    _room_timer_state.pop(room_id, None)
+    _room_music_state.pop(room_id, None)
 
 
 def _bind_sid(sid: str, member_id: int) -> None:
@@ -129,7 +135,11 @@ def on_disconnect():
 @socketio.on("filmtv_control")
 def on_filmtv_control(data):
     member = _member_from_sid()
-    if not member or not isinstance(data, dict):
+    if (
+        not member
+        or not isinstance(data, dict)
+        or not rate_limit(f"music_sync:{member.id}", *current_app.config["RL_SOCKET"])
+    ):
         return
     room = member.room
     action = data.get("action")
@@ -138,6 +148,7 @@ def on_filmtv_control(data):
     if (
         action not in {"play", "pause", "seek", "heartbeat"}
         or not rate_limit(f"filmtv_control:{member.id}", *current_app.config["RL_SOCKET"])
+        or (room.filmtv_host_id is not None and room.filmtv_host_id != member.id)
     ):
         return
 
@@ -393,40 +404,6 @@ def on_read_receipt(data=None):
     emit("read_receipt", {"member_id": member.id, "display_name": member.display_name}, room=f"room:{member.room.room_id}")
 
 
-# ─── New Synced Modules (YouTube Watch Party, Local Video, Aesthetic Timer & Study Music) ───
-
-@socketio.on("yt_sync")
-def on_yt_sync(data):
-    """Broadcast YouTube player synchronization actions (play, pause, seek, load)."""
-    member = _member_from_sid()
-    if not member or not isinstance(data, dict):
-        return
-    payload = {
-        "action": data.get("action"),
-        "video_id": data.get("video_id"),
-        "time": data.get("time", 0.0),
-        "sender_id": member.id,
-        "sender_name": member.display_name,
-    }
-    emit("yt_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
-
-
-@socketio.on("video_sync")
-def on_video_sync(data):
-    """Broadcast Local Uploaded Video synchronization actions."""
-    member = _member_from_sid()
-    if not member or not isinstance(data, dict):
-        return
-    payload = {
-        "action": data.get("action"),
-        "src": data.get("src"),
-        "time": data.get("time", 0.0),
-        "sender_id": member.id,
-        "sender_name": member.display_name,
-    }
-    emit("video_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
-
-
 @socketio.on("timer_sync")
 def on_timer_sync(data):
     """Broadcast & persist Aesthetic Study Timer state across room members."""
@@ -457,14 +434,32 @@ def on_timer_sync(data):
 
 @socketio.on("music_sync")
 def on_music_sync(data):
-    """Broadcast Synced Study Lofi Music state (play, pause, track, volume)."""
+    """Broadcast and retain the current in-timer audio playback state."""
     member = _member_from_sid()
     if not member or not isinstance(data, dict):
         return
+    action = data.get("action")
+    track_id = data.get("track_id")
+    if action not in {"play", "pause", "seek", "sync"} or track_id not in {"lofi", "rain", "forest"}:
+        return
+    try:
+        position = float(data.get("time", 0.0))
+    except (TypeError, ValueError):
+        return
+    if not math.isfinite(position) or position < 0:
+        return
+
+    now = time.time()
+    state = {
+        "action": action,
+        "track_id": track_id,
+        "time": position,
+        "updated_at": now,
+    }
+    _room_music_state[member.room.room_id] = state
     payload = {
-        "action": data.get("action"),
-        "track_id": data.get("track_id"),
-        "time": data.get("time", 0.0),
+        **state,
+        "server_time": now,
         "sender_id": member.id,
         "sender_name": member.display_name,
     }
@@ -487,51 +482,23 @@ def on_doc_annotation_sync(data):
     emit("doc_annotation_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
 
 
-@socketio.on("soundcloud_sync")
-def on_soundcloud_sync(data):
-    """Broadcast & persist integrated SoundCloud player embed URL across room members."""
-    member = _member_from_sid()
-    if not member or not isinstance(data, dict):
-        return
-    room_id = member.room.room_id
-    embed_url = data.get("embed_url")
-    if embed_url:
-        _room_soundcloud_state[room_id] = {"embed_url": embed_url}
-
-    payload = {
-        "embed_url": embed_url,
-        "sender_id": member.id,
-        "sender_name": member.display_name,
-    }
-    emit("soundcloud_sync", payload, room=f"room:{room_id}", include_self=False)
-
-
-@socketio.on("ott_media_sync")
-def on_ott_media_sync(data):
-    """Broadcast OTT Watch Party shared media selection across room members."""
-    member = _member_from_sid()
-    if not member or not isinstance(data, dict):
-        return
-    payload = {
-        "embed_url": data.get("embed_url"),
-        "video_src": data.get("video_src"),
-        "is_video": data.get("is_video", False),
-        "sender_id": member.id,
-        "sender_name": member.display_name,
-    }
-    emit("ott_media_sync", payload, room=f"room:{member.room.room_id}", include_self=False)
-
-
 @socketio.on("request_room_state")
 def on_request_room_state(_data=None):
-    """Restore active room timer theme, time left, and SoundCloud embed URL on connect/reconnect."""
+    """Restore active room timer theme and audio playback position."""
     member = _member_from_sid()
     if not member:
         return
     room_id = member.room.room_id
     timer_st = _room_timer_state.get(room_id, {})
-    soundcloud_st = _room_soundcloud_state.get(room_id, {})
+    music_st = dict(_room_music_state.get(room_id, {}))
+    if music_st.get("action") in {"play", "sync"}:
+        music_st["time"] = max(
+            0.0,
+            music_st.get("time", 0.0)
+            + time.time()
+            - music_st.get("updated_at", time.time()),
+        )
     emit("room_state", {
         "timer_state": timer_st,
-        "soundcloud_state": soundcloud_st,
+        "music_state": music_st,
     })

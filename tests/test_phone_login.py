@@ -9,7 +9,7 @@ from app import create_app
 from app import config as config_module
 from app.config import Config
 from app.extensions import db, socketio
-from app.models import Member, Message, Room, utcnow
+from app.models import FilmTVAnnotation, Member, Message, Room, utcnow
 
 
 def make_test_config(tmp_path):
@@ -122,6 +122,21 @@ def test_phone_login_restores_room_history_theme_and_doodle(app):
     assert session_check["phone_number"] == "15552223344"
 
 
+def test_http_only_cookie_can_restore_and_logout_without_bearer_header(app):
+    client = app.test_client()
+    response = login(client, "15550007770", "Cookie!OnlyRoomPassword2026")
+    assert response.status_code == 200
+    set_cookie = response.headers.get("Set-Cookie", "")
+    assert "HttpOnly" in set_cookie
+
+    restored = client.get("/api/auth/session-check")
+    assert restored.get_json()["authenticated"] is True
+
+    logout_response = client.post("/api/auth/logout")
+    assert logout_response.status_code == 200
+    assert client.get("/api/auth/session-check").get_json()["authenticated"] is False
+
+
 def test_session_and_room_survive_flask_app_restart(app, tmp_path):
     phone_number = "15556667777"
     password = "Restart!RoomPassword2026"
@@ -191,6 +206,80 @@ def test_phone_room_keeps_two_member_limit_and_rejects_wrong_password(app):
     with app.app_context():
         room = Room.query.filter_by(phone_number=phone_number).one()
         assert Member.query.filter_by(room_pk=room.id).count() == 2
+
+
+def test_room_and_content_are_deleted_after_both_members_logout(app):
+    phone_number = "15550009991"
+    password = "DeleteRoom!AfterLogout2026"
+    first_client = app.test_client()
+    second_client = app.test_client()
+    first = login(first_client, phone_number, password).get_json()
+    second = login(second_client, phone_number, password).get_json()
+    first_headers = {"X-Session-Token": first["session_token"]}
+    second_headers = {"X-Session-Token": second["session_token"]}
+
+    with app.app_context():
+        room = Room.query.filter_by(room_id=first["room_id"]).one()
+        media_dir = Path(app.config["MEDIA_DIR"])
+        paths = [
+            Path(app.config["UPLOADS_DIR"]) / "private.enc",
+            Path(app.config["THEMES_DIR"]) / "theme_room.png",
+            Path(app.config["DOODLES_DIR"]) / "doodle_room.png",
+            Path(app.config["FILMTV_DIR"]) / "video_room.mp4",
+        ]
+        for path in paths:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"room-private-content")
+        room.theme_path = str(paths[1])
+        room.doodle_path = str(paths[2])
+        room.filmtv_source_type = "upload"
+        room.filmtv_source = str(paths[3])
+        message = Message(
+            room_pk=room.id,
+            sender_id=first["member_id"],
+            ciphertext="encrypted-message",
+            msg_type="image",
+            media_path=str(paths[0]),
+        )
+        db.session.add(message)
+        db.session.flush()
+        db.session.add(
+            FilmTVAnnotation(
+                room_pk=room.id,
+                document_key="private-document",
+                page_number=1,
+                kind="highlight",
+                x=0.1,
+                y=0.1,
+                width=0.2,
+                height=0.1,
+                color="yellow",
+                created_by=first["member_id"],
+            )
+        )
+        db.session.commit()
+        room_db_id = room.id
+
+    first_logout = first_client.post("/api/auth/logout", headers=first_headers)
+    assert first_logout.status_code == 200
+    assert first_logout.get_json()["room_deleted"] is False
+    assert second_client.get("/api/messages", headers=second_headers).status_code == 200
+    assert first_client.get("/api/messages", headers=first_headers).status_code == 401
+    assert all(path.is_file() for path in paths)
+
+    second_logout = second_client.post("/api/auth/logout", headers=second_headers)
+    assert second_logout.status_code == 200
+    assert second_logout.get_json()["room_deleted"] is True
+    assert second_client.get("/api/messages", headers=second_headers).status_code == 401
+
+    with app.app_context():
+        assert db.session.get(Room, room_db_id) is None
+        assert Message.query.filter_by(room_pk=room_db_id).count() == 0
+        assert FilmTVAnnotation.query.filter_by(room_pk=room_db_id).count() == 0
+    assert all(not path.exists() for path in paths)
+
+    recreated = login(app.test_client(), phone_number, password).get_json()
+    assert recreated["room_id"] != first["room_id"]
 
 
 def test_legacy_room_can_be_linked_once_without_losing_messages(app):

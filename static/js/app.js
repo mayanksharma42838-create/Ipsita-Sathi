@@ -24,6 +24,16 @@ const App = (() => {
     recording: false,
   };
   let partnerLaunchWindow = null;
+  let currentQuotedReply = null;
+
+  function clearQuotedReply() {
+    currentQuotedReply = null;
+    $("#quotedReplyBar")?.classList.add("hidden");
+    const sender = $("#quotedReplySender");
+    const text = $("#quotedReplyText");
+    if (sender) sender.textContent = "Replying to Partner";
+    if (text) text.textContent = "Quoted message snippet...";
+  }
 
   const WATCH_PROVIDER_URLS = {
     teleparty: "https://www.teleparty.com/mobile-download",
@@ -33,6 +43,20 @@ const App = (() => {
   const WATCH_PROVIDER_NAMES = {
     teleparty: "Teleparty",
     rave: "Rave",
+  };
+  const EMBEDDED_GAMES = {
+    krunker: { name: "Krunker.io", url: "https://krunker.io/", canEmbed: true },
+    shellshock: { name: "Shell Shockers", url: "https://shellshock.io/", canEmbed: true },
+    toughlove: { name: "Tough Love Arena", canEmbed: false, reason: "The game host sends X-Frame-Options: DENY." },
+    madalin: { name: "Madalin Stunt Cars 3", canEmbed: false, reason: "CrazyGames only permits same-origin framing." },
+    drifthunters: { name: "Drift Hunters", canEmbed: false, reason: "CrazyGames only permits same-origin framing." },
+    basketball: { name: "Basketball Legends 2020", canEmbed: false, reason: "CrazyGames only permits same-origin framing." },
+    soccer: { name: "Soccer Random", canEmbed: false, reason: "CrazyGames only permits same-origin framing." },
+    fireboy: { name: "Fireboy and Watergirl", canEmbed: false, reason: "CrazyGames only permits same-origin framing." },
+    tanktrouble: { name: "Tank Trouble", url: "https://tanktrouble.com/", canEmbed: true },
+    minigames: { name: "2-3-4 Player Mini Games", canEmbed: false, reason: "No local game package is installed in this app." },
+    gartic: { name: "Gartic Phone", url: "https://garticphone.com/", canEmbed: true },
+    tetrio: { name: "TETR.IO", canEmbed: false, reason: "The game host sends X-Frame-Options: SAMEORIGIN." },
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -45,7 +69,8 @@ const App = (() => {
   }
 
   function headers(json = true) {
-    const h = { "X-Session-Token": state.token };
+    const h = {};
+    if (state.token) h["X-Session-Token"] = state.token;
     if (json) h["Content-Type"] = "application/json";
     return h;
   }
@@ -80,8 +105,8 @@ const App = (() => {
     return String(value || "").trim().replace(/[\s().-]/g, "").replace(/^\+/, "");
   }
 
-  function handleLogin(contact, email, room, password) {
-    const userData = { contact, email, room, password, isLoggedIn: true };
+  function handleLogin(contact, email, room) {
+    const userData = { contact, email, room, isLoggedIn: true };
     localStorage.setItem("sathi_user_session", JSON.stringify(userData));
   }
 
@@ -139,7 +164,7 @@ const App = (() => {
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || `Login failed (${response.status})`);
 
-      handleLogin(phoneNumber, emailAddress, data.room_id || roomName, password);
+      handleLogin(phoneNumber, emailAddress, data.room_id || roomName);
       await enterRoom(data, password, data.phone_number || phoneNumber || emailAddress);
     } catch (e) {
       showAuthError(e.message);
@@ -149,12 +174,22 @@ const App = (() => {
   }
 
   async function logout() {
+    if (
+      state.token &&
+      !window.confirm("If both members log out, this room and its shared content will be permanently deleted. Continue?")
+    ) {
+      return;
+    }
+    const roomId = state.roomId;
+    let roomDeleted = false;
     try {
       if (state.token) {
-        await fetch("/api/auth/logout", {
+        const response = await fetch("/api/auth/logout", {
           method: "POST",
           headers: { "X-Session-Token": state.token },
         });
+        const result = await response.json().catch(() => ({}));
+        roomDeleted = response.ok && result.room_deleted === true;
       }
     } catch {
       /* ignore */
@@ -167,7 +202,17 @@ const App = (() => {
       }
       state.socket = null;
     }
+    const studyAudio = $("#syncedStudyAudio");
+    studyAudio?.pause();
+    if (studyAudio) studyAudio.currentTime = 0;
+    if (musicHeartbeat) clearInterval(musicHeartbeat);
+    musicHeartbeat = null;
     OfflineStore.clearSession();
+    if (roomId) {
+      OfflineStore.clearRoomData(roomId);
+      await OfflineStore.clearRoomKey(roomId).catch(() => { });
+    }
+    localStorage.removeItem("sathi_user_session");
     state.token = null;
     state.memberId = null;
     state.displayName = null;
@@ -179,22 +224,28 @@ const App = (() => {
     $("#chatView")?.classList.remove("active");
     $("#authView")?.classList.remove("hidden");
     closeModal("settingsModal");
+    if (roomDeleted) alert("Both members have logged out. The room and its shared content were deleted.");
   }
 
-  async function enterRoom(data, password, phoneNumber = data.phone_number || "") {
+  async function enterRoom(data, password, phoneNumber = data.phone_number || "", roomKey = null) {
     state.token = data.session_token;
     state.memberId = data.member_id;
     state.displayName = data.display_name;
     state.phoneNumber = phoneNumber;
     state.roomId = data.room_id;
-    state.password = password;
+    state.password = null;
 
     const saltBase64 = data.salt;
     let salt = undefined;
     if (saltBase64) {
       salt = CryptoClient.b64decode(saltBase64);
     }
-    state.key = await CryptoClient.deriveKey(state.roomId, password, salt);
+    state.key = roomKey || await CryptoClient.deriveKey(state.roomId, password, salt);
+    try {
+      await OfflineStore.setRoomKey(state.roomId, state.key);
+    } catch (error) {
+      console.warn("Unable to persist the room key on this device:", error);
+    }
 
     if (data.theme_opacity !== undefined) {
       document.documentElement.style.setProperty("--overlay-opacity", data.theme_opacity);
@@ -205,7 +256,6 @@ const App = (() => {
     }
 
     OfflineStore.setSession({
-      token: state.token,
       memberId: state.memberId,
       displayName: state.displayName,
       roomId: state.roomId,
@@ -312,26 +362,83 @@ const App = (() => {
   async function uploadFilmTV(file) {
     setFilmTVError("");
     if (!file) return;
-    const fd = new FormData();
-    fd.append("file", file);
     const title = ($("#filmtvTitleInput")?.value || "").trim();
-    if (title) fd.append("title", title);
-    try {
-      const res = await fetch("/api/filmtv/upload", {
-        method: "POST",
-        headers: { "X-Session-Token": state.token },
-        body: fd,
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Upload failed");
+    const progress = $("#filmtvUploadProgress");
+    const status = $("#filmtvUploadStatus");
+    if (progress) {
+      progress.value = 0;
+      progress.hidden = false;
+    }
+    if (status) status.textContent = `Preparing ${file.name}...`;
 
-      if (data.state) {
-        await FilmTV.loadState(data.state, state.memberId);
-        const fileInput = $("#filmtvFile");
-        if (fileInput) fileInput.value = "";
+    try {
+      const initResponse = await fetch("/api/filmtv/upload/init", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Session-Token": state.token,
+        },
+        body: JSON.stringify({ filename: file.name, size: file.size, title }),
+      });
+      const init = await initResponse.json().catch(() => ({}));
+      if (!initResponse.ok) throw new Error(init.error || "Upload could not start");
+      const chunkBytes = Number(init.chunk_bytes);
+      if (!init.upload_token || !Number.isSafeInteger(chunkBytes) || chunkBytes < 1) {
+        throw new Error("Server returned invalid upload settings");
       }
+
+      let offset = 0;
+      let result = null;
+      while (offset < file.size) {
+        const end = Math.min(offset + chunkBytes, file.size);
+        const formData = new FormData();
+        formData.append("upload_token", init.upload_token);
+        formData.append("offset", String(offset));
+        formData.append("chunk", file.slice(offset, end), file.name);
+        result = await new Promise((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("POST", "/api/filmtv/upload/chunk");
+          xhr.setRequestHeader("X-Session-Token", state.token);
+          xhr.upload.addEventListener("progress", (event) => {
+            if (!event.lengthComputable) return;
+            const percent = Math.floor(((offset + event.loaded) / file.size) * 100);
+            if (progress) progress.value = percent;
+            if (status) status.textContent = `Uploading ${percent}%`;
+          });
+          xhr.addEventListener("load", () => {
+            let response;
+            try {
+              response = JSON.parse(xhr.responseText || "{}");
+            } catch {
+              reject(new Error("Server returned an invalid upload response"));
+              return;
+            }
+            if (xhr.status < 200 || xhr.status >= 300) {
+              reject(new Error(response.error || "Upload failed"));
+              return;
+            }
+            resolve(response);
+          });
+          xhr.addEventListener("error", () => reject(new Error("Network error during upload")));
+          xhr.send(formData);
+        });
+        if (!result.ok || result.next_offset !== end) {
+          throw new Error(result.error || "Server did not confirm the uploaded chunk");
+        }
+        offset = result.next_offset;
+      }
+
+      if (!result?.done || !result.state) throw new Error("Upload did not complete");
+      await FilmTV.loadState(result.state, state.memberId);
+      if (progress) progress.value = 100;
+      if (status) status.textContent = "Uploaded and synced with your partner";
+      ["#filmtvFile", "#filmtvVideoFile", "#filmtvFileEmpty", "#filmtvVideoFileEmpty"].forEach((selector) => {
+        const fileInput = $(selector);
+        if (fileInput) fileInput.value = "";
+      });
     } catch (e) {
       setFilmTVError(e.message);
+      if (status) status.textContent = "Upload failed";
     }
   }
 
@@ -339,11 +446,8 @@ const App = (() => {
     setFilmTVError("");
     try {
       const data = await api("/api/filmtv/clear", { method: "POST", body: "{}" });
-      if (data && data.state) {
-        await FilmTV.loadState(data.state, state.memberId);
-      } else {
-        FilmTV.clearPlayer();
-      }
+      if (data?.state) await FilmTV.loadState(data.state, state.memberId);
+      else FilmTV.clearPlayer();
       if ($("#filmtvUrl")) $("#filmtvUrl").value = "";
     } catch (e) {
       setFilmTVError(e.message);
@@ -353,24 +457,22 @@ const App = (() => {
   async function requestNotificationPermissions(silent = false) {
     if (window.Capacitor && window.Capacitor.isNativePlatform()) {
       try {
-        const localNotifs = window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
+        const localNotifs = window.Capacitor.Plugins?.LocalNotifications;
         if (localNotifs) {
-          const perm = await localNotifs.checkPermissions();
-          if (perm.display !== "granted") {
-            const req = await localNotifs.requestPermissions();
-            if (req.display === "granted") {
+          const permission = await localNotifs.checkPermissions();
+          if (permission.display !== "granted") {
+            const requested = await localNotifs.requestPermissions();
+            if (requested.display === "granted") {
               if (!silent) alert("Native mobile notifications enabled!");
-              try {
-                await localNotifs.createChannel({
-                  id: "sathi_messages",
-                  name: "Sathi Messages",
-                  description: "Room notifications for messages and sync events",
-                  importance: 5,
-                  visibility: 1,
-                  sound: "notification.wav",
-                  vibration: true,
-                });
-              } catch (e) { }
+              await localNotifs.createChannel({
+                id: "sathi_messages",
+                name: "Sathi Messages",
+                description: "Room notifications for messages and sync events",
+                importance: 5,
+                visibility: 1,
+                sound: "notification.wav",
+                vibration: true,
+              });
             }
           }
         }
@@ -380,13 +482,9 @@ const App = (() => {
     }
 
     if ("Notification" in window) {
-      if (Notification.permission === "default") {
-        if (!silent) {
-          const perm = await Notification.requestPermission();
-          if (perm === "granted") {
-            alert("Background notifications enabled!");
-          }
-        }
+      if (Notification.permission === "default" && !silent) {
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") alert("Background notifications enabled!");
       } else if (Notification.permission === "granted" && !silent) {
         alert("Notifications are already enabled.");
       }
@@ -638,7 +736,7 @@ const App = (() => {
         if (videoEl) {
           videoEl.srcObject = event.streams[0];
           videoEl.style.display = "block";
-          videoEl.play().catch(() => {});
+          videoEl.play().catch(() => { });
         }
       };
 
@@ -695,14 +793,10 @@ const App = (() => {
       state.socket.emit("request_room_state");
     });
 
-    // ─── New Synced Socket Listeners (YouTube Watch Party, Aesthetic Timer, Study Music, Doc Annotations, Spotify) ───
-    state.socket.on("yt_sync", (payload) => handleRemoteYtSync(payload));
-    state.socket.on("video_sync", (payload) => handleRemoteVideoSync(payload));
+    // ─── Shared room state listeners ───
     state.socket.on("timer_sync", (payload) => handleRemoteTimerSync(payload));
     state.socket.on("music_sync", (payload) => handleRemoteMusicSync(payload));
     state.socket.on("doc_annotation_sync", (payload) => handleRemoteDocAnnotationSync(payload));
-    state.socket.on("soundcloud_sync", (payload) => handleRemoteSoundCloudSync(payload));
-    state.socket.on("ott_media_sync", (payload) => handleRemoteOttMediaSync(payload));
     state.socket.on("room_state", (payload) => handleRoomStateRestoration(payload));
   }
 
@@ -751,6 +845,86 @@ const App = (() => {
     openModal("mediaZoomModal");
   }
 
+  async function loadMessages() {
+    const box = $("#messages");
+    if (!box) return;
+    try {
+      const data = await api("/api/messages");
+      box.replaceChildren();
+      for (const message of data.messages || []) await renderMessage(message, false);
+      OfflineStore.cacheMessages(state.roomId, data.messages || []);
+      scrollMessages();
+    } catch {
+      const cached = OfflineStore.getCachedMessages(state.roomId);
+      box.replaceChildren();
+      for (const message of cached) await renderMessage(message, false);
+    }
+  }
+
+  async function renderMessage(message, shouldScroll = true) {
+    if (document.querySelector(`[data-msg-id="${message.id}"]`)) return;
+    const item = document.createElement("div");
+    item.className = `msg ${message.sender_id === state.memberId ? "me" : "them"}`;
+    item.dataset.msgId = message.id;
+
+    const sender = document.createElement("div");
+    sender.className = "meta";
+    const senderName = document.createElement("span");
+    senderName.textContent = message.sender_name || "Partner";
+    sender.appendChild(senderName);
+    const sentAt = new Date(message.created_at);
+    if (Number.isFinite(sentAt.getTime())) {
+      const time = document.createElement("time");
+      time.dateTime = sentAt.toISOString();
+      time.textContent = new Intl.DateTimeFormat(undefined, {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }).format(sentAt);
+      time.title = sentAt.toLocaleString();
+      sender.appendChild(time);
+    }
+    item.appendChild(sender);
+
+    const plaintext = state.key
+      ? await CryptoClient.decryptText(state.key, message.ciphertext)
+      : null;
+    const body = document.createElement("div");
+    body.textContent = plaintext || "[encrypted]";
+    item.appendChild(body);
+
+    if (message.media_url && message.msg_type === "image") {
+      const image = await fetchDecryptedMedia(message).catch(() => null);
+      if (image) item.appendChild(image);
+    } else if (message.media_url && message.msg_type === "voice") {
+      const audio = await fetchDecryptedAudio(message).catch(() => null);
+      if (audio) item.appendChild(audio);
+    }
+
+    if (message.expires_at) {
+      const expiry = document.createElement("div");
+      expiry.className = "ttl";
+      expiry.textContent = `Expires ${new Date(message.expires_at).toLocaleTimeString()}`;
+      item.appendChild(expiry);
+      scheduleExpiry(message.id, message.expires_at);
+    }
+
+    $("#messages")?.appendChild(item);
+    if (shouldScroll) scrollMessages();
+  }
+
+  async function loadDoodle() {
+    try {
+      const response = await fetch("/api/doodle/latest", {
+        headers: { "X-Session-Token": state.token || "" },
+        credentials: "same-origin",
+      });
+      if (response.ok) await DoodleBoard.loadImage(await response.blob());
+    } catch {
+      DoodleBoard.clear();
+    }
+  }
+
   async function loadGallery() {
     const grid = $("#galleryGrid");
     if (!grid) return;
@@ -791,155 +965,6 @@ const App = (() => {
     }
   }
 
-  async function loadDoodle() {
-    if (!state.token) return;
-    try {
-      const response = await fetch("/api/doodle/latest", {
-        credentials: "include",
-        headers: headers(false),
-      });
-      if (response.status === 404) {
-        if (typeof DoodleBoard !== "undefined" && DoodleBoard.clear) DoodleBoard.clear();
-        return;
-      }
-      if (!response.ok) throw new Error(`Doodle restore failed (${response.status})`);
-      const blob = await response.blob();
-      if (blob && blob.size > 0 && typeof DoodleBoard !== "undefined" && DoodleBoard.loadImage) {
-        const loaded = await DoodleBoard.loadImage(blob);
-        if (!loaded && DoodleBoard.clear) DoodleBoard.clear();
-      } else if (typeof DoodleBoard !== "undefined" && DoodleBoard.clear) {
-        DoodleBoard.clear();
-      }
-    } catch (error) {
-      console.warn("Saved room doodle fallback engaged:", error);
-      try {
-        if (typeof DoodleBoard !== "undefined" && DoodleBoard.clear) DoodleBoard.clear();
-      } catch (e) { }
-    }
-  }
-
-  async function loadMessages() {
-    const box = $("#messages");
-    if (!box) return;
-    try {
-      const data = await api("/api/messages");
-      box.innerHTML = "";
-      for (const m of data.messages) await renderMessage(m, false);
-      OfflineStore.cacheMessages(state.roomId, data.messages);
-      scrollMessages();
-    } catch {
-      const cached = OfflineStore.getCachedMessages(state.roomId) || [];
-      box.innerHTML = "";
-      for (const m of cached) await renderMessage(m, false);
-    }
-  }
-
-  let currentQuotedReply = null;
-
-  function setQuotedReply(sender, snippet) {
-    currentQuotedReply = { sender, snippet };
-    const bar = $("#quotedReplyBar");
-    const senderEl = $("#quotedReplySender");
-    const textEl = $("#quotedReplyText");
-    if (bar && senderEl && textEl) {
-      senderEl.textContent = `Replying to ${sender}`;
-      textEl.textContent = snippet;
-      bar.classList.remove("hidden");
-    }
-  }
-
-  function clearQuotedReply() {
-    currentQuotedReply = null;
-    const bar = $("#quotedReplyBar");
-    if (bar) bar.classList.add("hidden");
-  }
-
-  async function renderMessage(m, scroll = true) {
-    if (document.querySelector(`[data-msg-id="${m.id}"]`)) return;
-    const isMe = m.sender_id === state.memberId;
-    const div = document.createElement("div");
-    div.className = `msg ${isMe ? "me" : "them"}`;
-    div.dataset.msgId = m.id;
-
-    const msgHeader = document.createElement("div");
-    msgHeader.className = "msg-header";
-    const avatarImg = document.createElement("img");
-    avatarImg.className = "msg-avatar";
-    avatarImg.src = m.sender_avatar_url || `/api/profile/avatar/${m.sender_id}`;
-    avatarImg.alt = "DP";
-    const senderSpan = document.createElement("span");
-    senderSpan.className = "msg-sender";
-    senderSpan.textContent = m.sender_name || "Partner";
-    msgHeader.appendChild(avatarImg);
-    msgHeader.appendChild(senderSpan);
-    div.appendChild(msgHeader);
-
-    const plain = state.key ? await CryptoClient.decryptText(state.key, m.ciphertext) : null;
-    const body = document.createElement("div");
-    body.className = "msg-body";
-    body.textContent = plain || "[encrypted]";
-    div.appendChild(body);
-
-    if (m.media_url && m.msg_type === "image") {
-      try {
-        const img = await fetchDecryptedMedia(m);
-        if (img) div.appendChild(img);
-      } catch { /* skip */ }
-    }
-    if (m.media_url && m.msg_type === "voice") {
-      try {
-        const audio = await fetchDecryptedAudio(m);
-        if (audio) div.appendChild(audio);
-      } catch { /* skip */ }
-    }
-
-    const footer = document.createElement("div");
-    footer.className = "msg-footer";
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "msg-time";
-    timeSpan.textContent = new Date(m.created_at || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    footer.appendChild(timeSpan);
-
-    if (isMe) {
-      const ticksSpan = document.createElement("span");
-      ticksSpan.className = "msg-ticks read";
-      ticksSpan.textContent = "✓✓";
-      footer.appendChild(ticksSpan);
-    }
-
-    div.appendChild(footer);
-
-    div.addEventListener("dblclick", () => {
-      setQuotedReply(m.sender_name || "Partner", plain || "Media message");
-    });
-
-    if (m.expires_at) {
-      const ttl = document.createElement("div");
-      ttl.className = "ttl";
-      ttl.textContent = `⏱ disappears ${new Date(m.expires_at).toLocaleTimeString()}`;
-      div.appendChild(ttl);
-      scheduleExpiry(m.id, m.expires_at);
-    }
-
-    $("#messages")?.appendChild(div);
-
-    // Also append to Fullscreen Mini Chat Overlay
-    const fsChatBox = $("#fullscreenChatMessages");
-    if (fsChatBox && plain) {
-      const fsDiv = document.createElement("div");
-      fsDiv.className = `fullscreen-chat-msg ${isMe ? "me" : "them"}`;
-      fsDiv.textContent = `${isMe ? "Me" : (m.sender_name || "Partner")}: ${plain}`;
-      fsChatBox.appendChild(fsDiv);
-      fsChatBox.scrollTop = fsChatBox.scrollHeight;
-
-      if (!isMe && $("#fullscreenChatOverlay")?.classList.contains("hidden")) {
-        $("#fullscreenChatOverlay")?.classList.remove("hidden");
-      }
-    }
-
-    if (scroll) scrollMessages();
-  }
-
   function scheduleExpiry(id, expiresAt) {
     const ms = new Date(expiresAt).getTime() - Date.now();
     if (ms <= 0) {
@@ -952,8 +977,7 @@ const App = (() => {
   }
 
   async function fetchDecryptedMedia(m) {
-    const url = m.media_url.includes("?") ? `${m.media_url}&token=${encodeURIComponent(state.token || "")}` : `${m.media_url}?token=${encodeURIComponent(state.token || "")}`;
-    const res = await fetch(url, { headers: headers(false), credentials: "include" });
+    const res = await fetch(m.media_url, { headers: headers(false), credentials: "include" });
     if (!res.ok) return null;
     const buf = new Uint8Array(await res.arrayBuffer());
     let blob;
@@ -971,8 +995,7 @@ const App = (() => {
   }
 
   async function fetchDecryptedAudio(m) {
-    const url = m.media_url.includes("?") ? `${m.media_url}&token=${encodeURIComponent(state.token || "")}` : `${m.media_url}?token=${encodeURIComponent(state.token || "")}`;
-    const res = await fetch(url, { headers: headers(false), credentials: "include" });
+    const res = await fetch(m.media_url, { headers: headers(false), credentials: "include" });
     if (!res.ok) return null;
     const buf = new Uint8Array(await res.arrayBuffer());
     let blob;
@@ -1493,7 +1516,7 @@ const App = (() => {
       if (videoEl) {
         videoEl.srcObject = rtcLocalStream;
         videoEl.style.display = "block";
-        videoEl.play().catch(() => {});
+        videoEl.play().catch(() => { });
       }
 
       if (rtcPeerConnection) rtcPeerConnection.close();
@@ -1714,22 +1737,16 @@ const App = (() => {
       openModal("settingsModal");
     });
 
-    $("#btnWatchPartyModule")?.addEventListener("click", () => {
-      $("#headerDropdownMenu")?.classList.add("hidden");
-      openModal("watchPartyModuleModal");
-      initWatchPartyModule();
-    });
-
     $("#btnWatchParty")?.addEventListener("click", () => {
       $("#headerDropdownMenu")?.classList.add("hidden");
       if (document.body.classList.contains("filmtv-open")) closeFilmTV();
       else openFilmTV();
     });
-
-    $("#btnSoundCloud")?.addEventListener("click", () => {
+    $("#btnGames")?.addEventListener("click", () => {
       $("#headerDropdownMenu")?.classList.add("hidden");
-      openModal("soundCloudModal");
-      initSoundCloudPlayer();
+      openModal("gamesModal");
+      initGamesLibrary();
+      window.CoupleGames?.showGameView?.("hub");
     });
 
     $("#btnStudyTimer")?.addEventListener("click", () => {
@@ -1776,17 +1793,6 @@ const App = (() => {
     );
     $("#btnFilmTVMessages")?.addEventListener("click", () => FilmTV.toggleMessages());
     $("#btnFilmTVLoad")?.addEventListener("click", () => loadFilmTVUrl());
-
-    $("#archiveSearchForm")?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const query = $("#archiveSearchInput")?.value.trim();
-      if (!query) return;
-      const button = event.currentTarget.querySelector('button[type="submit"]');
-      if (button) button.disabled = true;
-      searchMovieDatabase(query).finally(() => {
-        if (button) button.disabled = false;
-      });
-    });
 
     $("#filmtvSearchForm")?.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1861,7 +1867,15 @@ const App = (() => {
       const f = e.target.files && e.target.files[0];
       if (f) uploadFilmTV(f);
     });
+    $("#filmtvVideoFile")?.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) uploadFilmTV(f);
+    });
     $("#filmtvFileEmpty")?.addEventListener("change", (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) uploadFilmTV(f);
+    });
+    $("#filmtvVideoFileEmpty")?.addEventListener("change", (e) => {
       const f = e.target.files && e.target.files[0];
       if (f) uploadFilmTV(f);
     });
@@ -1941,27 +1955,45 @@ const App = (() => {
 
   async function tryRestore() {
     const s = OfflineStore.getSession();
-    if (!s || !s.token) return;
+    if (!s) return;
     try {
+      const requestHeaders = s.token ? { "X-Session-Token": s.token } : {};
       const res = await fetch("/api/auth/session-check", {
-        headers: { "X-Session-Token": s.token },
+        headers: requestHeaders,
         credentials: "include"
       });
       if (!res.ok) {
         OfflineStore.clearSession();
+        OfflineStore.clearRoomData(s.roomId);
+        if (s.roomId) await OfflineStore.clearRoomKey(s.roomId).catch(() => { });
         return;
       }
 
       const data = await res.json();
       if (!data.authenticated) {
         OfflineStore.clearSession();
+        OfflineStore.clearRoomData(s.roomId);
+        if (s.roomId) await OfflineStore.clearRoomKey(s.roomId).catch(() => { });
         return;
       }
-      if ($("#phoneNumber")) {
-        $("#phoneNumber").value = data.phone_number || data.email || "";
+      const roomKey = await OfflineStore.getRoomKey(data.room_id);
+      if (!roomKey) {
+        OfflineStore.setSession({
+          memberId: data.member_id,
+          displayName: data.display_name,
+          roomId: data.room_id,
+          phoneNumber: data.phone_number || data.email || "",
+        });
+        if ($("#phoneNumber")) {
+          $("#phoneNumber").value = data.phone_number || data.email || "";
+        }
+        showAuthError("Sign in again to restore this room on this device.");
+        return;
       }
-    } catch {
-      // Keep the login form available when the network is offline.
+      await enterRoom(data, null, data.phone_number || data.email || "", roomKey);
+    } catch (error) {
+      console.error("Unable to restore the saved room session:", error);
+      showAuthError("Could not restore the saved session. Sign in again to continue.");
     }
   }
 
@@ -1998,10 +2030,13 @@ const App = (() => {
 
     const savedSession = JSON.parse(localStorage.getItem("sathi_user_session") || "null");
     if (savedSession && savedSession.isLoggedIn) {
+      if (savedSession.password) {
+        delete savedSession.password;
+        localStorage.setItem("sathi_user_session", JSON.stringify(savedSession));
+      }
       if ($("#phoneNumber") && savedSession.contact) $("#phoneNumber").value = savedSession.contact;
       if ($("#emailAddress") && savedSession.email) $("#emailAddress").value = savedSession.email;
       if ($("#roomName") && savedSession.room) $("#roomName").value = savedSession.room;
-      if ($("#roomPassword") && savedSession.password) $("#roomPassword").value = savedSession.password;
     }
 
     const widget = document.getElementById("floating-widget") || document.querySelector(".floating-window") || document.getElementById("floatingWidgetOverlay");
@@ -2022,13 +2057,18 @@ const App = (() => {
 
   // ─── Synced Modules Implementation ───
   let timerState = { timeLeft: 25 * 60, totalTime: 25 * 60, interval: null, mode: "work", isRunning: false };
+  let studyTimerInitialized = false;
+  let remoteMusicUntil = 0;
+  let musicHeartbeat = null;
   const TRACK_URLS = {
     lofi: "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3",
-    rain: "https://cdn.pixabay.com/download/audio/2021/08/09/audio_8844888716.mp3",
-    forest: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_c8c8a73213.mp3"
+    rain: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    forest: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3"
   };
 
   function initStudyTimer() {
+    if (studyTimerInitialized) return;
+    studyTimerInitialized = true;
     const digits = $("#timerDigits");
     const progressRing = $("#timerProgressRing");
     const modeBtns = $$(".timer-mode-btn");
@@ -2109,68 +2149,74 @@ const App = (() => {
       };
     });
 
-    // In-Timer SoundCloud Search & Vibe Badges System
-    const timerScIframe = $("#timerSoundCloudIframe");
-    const timerScInput = $("#timerSoundCloudSearchInput");
-    const btnTimerScSearch = $("#btnTimerSoundCloudSearch");
-    const scVibeBtns = $$("#timerSoundCloudVibeRow .sc-vibe-btn");
+    const audio = $("#syncedStudyAudio");
+    const musicButton = $("#btnMusicToggle");
+    const musicSelect = $("#musicTrackSelect");
+    const musicStatus = $("#musicSyncStatus");
+    const musicVolume = $("#musicVolumeSlider");
+    const publishMusicState = (action) => {
+      if (!audio || Date.now() < remoteMusicUntil) return;
+      state.socket?.emit("music_sync", {
+        action,
+        track_id: musicSelect?.value || "lofi",
+        time: Number.isFinite(audio.currentTime) ? audio.currentTime : 0,
+      });
+    };
 
-    function getSoundCloudEmbedUrl(targetUrl) {
-      if (!targetUrl) return null;
-      const clean = targetUrl.startsWith("http") ? targetUrl : `https://soundcloud.com/search?q=${encodeURIComponent(targetUrl)}`;
-      return `https://w.soundcloud.com/player/?url=${encodeURIComponent(clean)}&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
-    }
-
-    if (btnTimerScSearch && timerScInput && timerScIframe) {
-      btnTimerScSearch.onclick = () => {
-        const q = timerScInput.value.trim();
-        if (!q) return;
-        const embedUrl = getSoundCloudEmbedUrl(q);
-        timerScIframe.src = embedUrl;
-        const mainScIframe = $("#soundCloudIframe");
-        if (mainScIframe) mainScIframe.src = embedUrl;
-        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
-      };
-      timerScInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") btnTimerScSearch.click();
+    if (audio) {
+      audio.volume = Number(musicVolume?.value || 0.35);
+      audio.addEventListener("play", () => {
+        if (Date.now() >= remoteMusicUntil) {
+          publishMusicState("play");
+          if (musicHeartbeat) clearInterval(musicHeartbeat);
+          musicHeartbeat = setInterval(() => publishMusicState("sync"), 5000);
+        }
+        if (musicButton) musicButton.setAttribute("aria-pressed", "true");
+        if (musicButton) musicButton.textContent = "Pause music";
+        if (musicStatus) musicStatus.textContent = "Playing in sync";
+      });
+      audio.addEventListener("pause", () => {
+        if (Date.now() >= remoteMusicUntil) {
+          if (!audio.ended) publishMusicState("pause");
+          if (musicHeartbeat) clearInterval(musicHeartbeat);
+          musicHeartbeat = null;
+        }
+        if (musicButton) musicButton.setAttribute("aria-pressed", "false");
+        if (musicButton) musicButton.textContent = "Play music";
+      });
+      audio.addEventListener("seeked", () => publishMusicState("seek"));
+      audio.addEventListener("error", () => {
+        if (musicStatus) musicStatus.textContent = "This track could not be loaded. Choose another.";
       });
     }
 
-    scVibeBtns.forEach((btn) => {
-      btn.onclick = () => {
-        scVibeBtns.forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        const url = btn.dataset.soundcloudUrl;
-        const embedUrl = getSoundCloudEmbedUrl(url);
-        if (timerScIframe) timerScIframe.src = embedUrl;
-        const mainScIframe = $("#soundCloudIframe");
-        if (mainScIframe) mainScIframe.src = embedUrl;
-        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
-      };
+    musicVolume?.addEventListener("input", (event) => {
+      if (audio) audio.volume = Number(event.target.value);
     });
 
-    const audio = $("#syncedStudyAudio");
-    $("#btnMusicToggle")?.addEventListener("click", () => {
+    musicSelect?.addEventListener("change", () => {
       if (!audio) return;
-      if (audio.paused) {
-        const track = $("#musicTrackSelect")?.value || "lofi";
-        audio.src = TRACK_URLS[track] || TRACK_URLS.lofi;
-        audio.play().then(() => {
-          $("#btnMusicToggle").textContent = "⏸ Pause Music";
-        }).catch((e) => {
-          console.warn("Audio play issue, retrying:", e);
-          audio.play().catch(() => {});
+      const wasPlaying = !audio.paused;
+      audio.src = TRACK_URLS[musicSelect.value] || TRACK_URLS.lofi;
+      audio.load();
+      if (wasPlaying) {
+        audio.play().catch(() => {
+          if (musicStatus) musicStatus.textContent = "Tap Play to start the selected track.";
         });
-        state.socket?.emit("music_sync", { action: "play", track_id: track });
-      } else {
-        audio.pause();
-        $("#btnMusicToggle").textContent = "🎵 Play Music";
-        state.socket?.emit("music_sync", { action: "pause" });
       }
     });
 
-    $("#musicVolumeSlider")?.addEventListener("input", (e) => {
-      if (audio) audio.volume = parseFloat(e.target.value);
+    musicButton?.addEventListener("click", () => {
+      if (!audio) return;
+      if (audio.paused) {
+        const track = musicSelect?.value || "lofi";
+        audio.src = TRACK_URLS[track] || TRACK_URLS.lofi;
+        audio.play().catch(() => {
+          if (musicStatus) musicStatus.textContent = "Tap Play again to allow audio playback.";
+        });
+      } else {
+        audio.pause();
+      }
     });
 
     updateDisplay();
@@ -2215,17 +2261,47 @@ const App = (() => {
   }
 
   function handleRemoteMusicSync(payload) {
-    if (!payload || !payload.action) return;
+    if (!payload || !["play", "pause", "seek", "sync"].includes(payload.action)) return;
     const audio = $("#syncedStudyAudio");
     if (!audio) return;
-    if (payload.action === "play") {
-      const track = payload.track_id || "lofi";
-      audio.src = TRACK_URLS[track] || TRACK_URLS.lofi;
-      audio.play().catch(() => {});
-      if ($("#btnMusicToggle")) $("#btnMusicToggle").textContent = "⏸ Pause Music";
-    } else if (payload.action === "pause") {
-      audio.pause();
-      if ($("#btnMusicToggle")) $("#btnMusicToggle").textContent = "🎵 Music";
+    const trackId = payload.track_id;
+    const trackUrl = TRACK_URLS[trackId];
+    if (!trackUrl) return;
+    if (musicHeartbeat) clearInterval(musicHeartbeat);
+    musicHeartbeat = null;
+    const selector = $("#musicTrackSelect");
+    if (selector) selector.value = trackId;
+
+    const applyState = () => {
+      remoteMusicUntil = Date.now() + 3000;
+      const position = Number(payload.time);
+      if (Number.isFinite(position) && Math.abs(audio.currentTime - position) > 1.25) {
+        try { audio.currentTime = position; } catch { }
+      }
+      if (payload.action === "play" || payload.action === "sync") {
+        audio.play().then(() => {
+          if ($("#musicSyncStatus")) $("#musicSyncStatus").textContent = "Playing in sync";
+        }).catch(() => {
+          if ($("#musicSyncStatus")) $("#musicSyncStatus").textContent = "Tap Play to join the synced track";
+        });
+      } else if (payload.action === "pause") {
+        audio.pause();
+        if ($("#musicSyncStatus")) $("#musicSyncStatus").textContent = "Paused in sync";
+      }
+      if ($("#btnMusicToggle")) {
+        $("#btnMusicToggle").textContent = payload.action === "pause" ? "Play music" : "Pause music";
+        $("#btnMusicToggle").setAttribute("aria-pressed", String(payload.action !== "pause"));
+      }
+    };
+
+    const currentSource = audio.currentSrc || audio.src;
+    const expectedSource = new URL(trackUrl, location.href).href;
+    if (currentSource !== expectedSource) {
+      audio.src = trackUrl;
+      audio.load();
+      audio.addEventListener("loadedmetadata", applyState, { once: true });
+    } else {
+      applyState();
     }
   }
 
@@ -2284,47 +2360,6 @@ const App = (() => {
     });
   }
 
-  function initSoundCloudPlayer() {
-    const iframe = $("#soundCloudIframe");
-    const input = $("#soundCloudUrlInput");
-    const btnLoad = $("#btnLoadSoundCloudUrl");
-    const presets = $$("#soundCloudPresetContainer .sc-preset");
-
-    function getSoundCloudEmbedUrl(targetUrl) {
-      if (!targetUrl) return null;
-      const clean = targetUrl.startsWith("http") ? targetUrl : `https://soundcloud.com/search?q=${encodeURIComponent(targetUrl)}`;
-      return `https://w.soundcloud.com/player/?url=${encodeURIComponent(clean)}&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false`;
-    }
-
-    if (btnLoad && input && iframe) {
-      btnLoad.onclick = () => {
-        const url = input.value.trim();
-        if (!url) return;
-        const embedUrl = getSoundCloudEmbedUrl(url);
-        iframe.src = embedUrl;
-        const timerIframe = $("#timerSoundCloudIframe");
-        if (timerIframe) timerIframe.src = embedUrl;
-        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
-      };
-      input.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") btnLoad.click();
-      });
-    }
-
-    presets.forEach((btn) => {
-      btn.onclick = () => {
-        presets.forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        const url = btn.dataset.soundcloudUrl;
-        const embedUrl = getSoundCloudEmbedUrl(url);
-        if (iframe) iframe.src = embedUrl;
-        const timerIframe = $("#timerSoundCloudIframe");
-        if (timerIframe) timerIframe.src = embedUrl;
-        state.socket?.emit("soundcloud_sync", { embed_url: embedUrl });
-      };
-    });
-  }
-
   function handleRemoteDocAnnotationSync(payload) {
     if (!payload || !payload.annotation) return;
     const list = $("#docNotesList");
@@ -2339,6 +2374,47 @@ const App = (() => {
       item.textContent = `${payload.sender_name || "Partner"}: ${payload.annotation}`;
       list.appendChild(item);
     }
+  }
+
+  function initGamesLibrary() {
+    const library = $("#onlineGameLibrary");
+    const player = $("#gamePlayer");
+    const status = $("#gamePlayerStatus");
+    if (!library || library.dataset.bound) return;
+    library.dataset.bound = "true";
+
+    library.addEventListener("click", (event) => {
+      const card = event.target.closest("[data-game-id]");
+      if (!card) return;
+      const game = EMBEDDED_GAMES[card.dataset.gameId];
+      if (!game) return;
+
+      library.querySelectorAll("[data-game-id]").forEach((item) => {
+        item.classList.toggle("active", item === card);
+      });
+      if (!game.canEmbed) {
+        if (player) {
+          player.removeAttribute("src");
+          player.hidden = true;
+        }
+        if (status) status.textContent = `${game.name} is unavailable in the app: ${game.reason}`;
+        return;
+      }
+
+      if (!player) return;
+      player.hidden = false;
+      player.title = `${game.name} embedded game`;
+      if (player.src !== game.url) player.src = game.url;
+      if (status) status.textContent = `Loading ${game.name} in the app...`;
+    });
+
+    player?.addEventListener("load", () => {
+      if (!player.hidden && status) {
+        const selected = library.querySelector("[data-game-id].active");
+        const game = EMBEDDED_GAMES[selected?.dataset.gameId];
+        if (game?.canEmbed) status.textContent = `${game.name} loaded. Multiplayer rooms and controls are provided by the game host.`;
+      }
+    });
   }
 
   function initRichMediaPicker() {
@@ -2423,110 +2499,6 @@ const App = (() => {
     });
   }
 
-  function handleRemoteYtSync(payload) {
-    if (!payload || !payload.action) return;
-    FilmTV.openStage();
-  }
-
-  function handleRemoteVideoSync(payload) {
-    if (!payload || !payload.action) return;
-    FilmTV.openStage();
-  }
-
-  function handleRemoteSoundCloudSync(payload) {
-    if (!payload || !payload.embed_url) return;
-    const iframe = $("#soundCloudIframe");
-    if (iframe) iframe.src = payload.embed_url;
-    const timerIframe = $("#timerSoundCloudIframe");
-    if (timerIframe) timerIframe.src = payload.embed_url;
-  }
-
-  function initWatchPartyModule() {
-    const cards = $$("#ottCardGrid .ott-card");
-    const iframe = $("#ottYtIframe");
-    const video = $("#ottLocalVideo");
-    const input = $("#ottMediaUrlInput");
-    const btnLoad = $("#btnOttLoadUrl");
-    const fileInput = $("#ottFileInput");
-
-    function parseYtEmbed(url) {
-      if (!url) return null;
-      if (url.includes("youtube.com/embed/")) return url;
-      const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]+)/);
-      if (match) return `https://www.youtube.com/embed/${match[1]}?autoplay=1&enablejsapi=1`;
-      return null;
-    }
-
-    cards.forEach((card) => {
-      card.onclick = () => {
-        cards.forEach((c) => c.classList.remove("active"));
-        card.classList.add("active");
-        const url = card.dataset.url;
-        if (iframe && video) {
-          video.style.display = "none";
-          iframe.style.display = "block";
-          iframe.src = url;
-        }
-        state.socket?.emit("ott_media_sync", { embed_url: url, is_video: false });
-      };
-    });
-
-    if (btnLoad && input) {
-      btnLoad.onclick = () => {
-        const raw = input.value.trim();
-        if (!raw) return;
-        const embedUrl = parseYtEmbed(raw);
-        const finalUrl = embedUrl || (raw.startsWith("http://") || raw.startsWith("https://") ? raw : `https://www.google.com/search?q=${encodeURIComponent(raw)}`);
-        
-        if (raw.endsWith(".mp4") || raw.endsWith(".webm") || raw.endsWith(".ogg")) {
-          if (iframe && video) {
-            iframe.style.display = "none";
-            video.style.display = "block";
-            video.src = raw;
-            video.play().catch(() => {});
-          }
-          state.socket?.emit("ott_media_sync", { video_src: raw, is_video: true });
-        } else {
-          if (iframe && video) {
-            video.style.display = "none";
-            iframe.style.display = "block";
-            iframe.src = finalUrl;
-          }
-          state.socket?.emit("ott_media_sync", { embed_url: finalUrl, is_video: false });
-        }
-      };
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") btnLoad.click(); });
-    }
-
-    if (fileInput) {
-      fileInput.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file || !video || !iframe) return;
-        iframe.style.display = "none";
-        video.style.display = "block";
-        video.src = URL.createObjectURL(file);
-        video.play().catch(() => {});
-      };
-    }
-  }
-
-  function handleRemoteOttMediaSync(payload) {
-    if (!payload) return;
-    openModal("watchPartyModuleModal");
-    const iframe = $("#ottYtIframe");
-    const video = $("#ottLocalVideo");
-    if (payload.is_video && payload.video_src && video && iframe) {
-      iframe.style.display = "none";
-      video.style.display = "block";
-      video.src = payload.video_src;
-      video.play().catch(() => {});
-    } else if (payload.embed_url && iframe && video) {
-      video.style.display = "none";
-      iframe.style.display = "block";
-      iframe.src = payload.embed_url;
-    }
-  }
-
   function handleRoomStateRestoration(payload) {
     if (!payload) return;
     if (payload.timer_state && payload.timer_state.preset) {
@@ -2537,12 +2509,7 @@ const App = (() => {
         container.className = `aesthetic-timer-box style-${preset} font-garamond glow-on`;
       }
     }
-    if (payload.soundcloud_state && payload.soundcloud_state.embed_url) {
-      const iframe = $("#soundCloudIframe");
-      if (iframe) iframe.src = payload.soundcloud_state.embed_url;
-      const timerIframe = $("#timerSoundCloudIframe");
-      if (timerIframe) timerIframe.src = payload.soundcloud_state.embed_url;
-    }
+    if (payload.music_state?.action) handleRemoteMusicSync(payload.music_state);
   }
 
   return { init };

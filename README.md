@@ -16,10 +16,11 @@ Secure **2-person private room** — Phone number + Room Password. No public roo
 
 ## FilmTV uploads
 
-- FilmTV uploads allow files up to 2 GiB by default (`FILMTV_MAX_BYTES`). Set `MAX_CONTENT_LENGTH` above that value to account for multipart overhead.
+- FilmTV accepts files up to 10 GiB by default (`FILMTV_MAX_BYTES`) and sends them in 32 MiB chunks (`FILMTV_CHUNK_BYTES`) with visible progress. `MAX_CONTENT_LENGTH` only needs to allow a chunk plus multipart overhead.
+- Videos and documents use the same shared upload; MP4/WebM playback, YouTube play/pause/seek, and room state are synchronized through the host's controls. Browser autoplay rules and supported video codecs still apply.
 - Uploaded PDFs open in the shared page viewer. Room members can add persistent, color-coded highlights and underlines; page navigation and annotation changes sync live.
-- Reverse proxies and hosting platforms must also allow the configured request size. The app streams uploads to local storage; production deployments need enough disk space and durable storage.
-- Video playback depends on browser codec support. FilmTV validates common container signatures but does not transcode unsupported codecs.
+- The application stores uploads on local disk. A deployment must provide at least 10 GiB of durable storage plus headroom, allow the configured chunk request size, and use shared storage when running multiple instances. The included Render free service does not provide that storage guarantee; large uploads require a suitable persistent disk or object-storage deployment.
+- FilmTV validates common container signatures but does not transcode unsupported codecs.
 
 ## Quick start
 

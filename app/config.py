@@ -55,12 +55,15 @@ class Config:
     SQLALCHEMY_DATABASE_URI = _raw_db_url
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
-    # Keep Flask's request ceiling above FilmTV's per-file limit.
-    FILMTV_MAX_BYTES = int(os.environ.get("FILMTV_MAX_BYTES", 2 * 1024 * 1024 * 1024))
-    MAX_CONTENT_LENGTH = int(
-        os.environ.get("MAX_CONTENT_LENGTH", FILMTV_MAX_BYTES + 1024 * 1024)
-    )
+    FILMTV_MAX_BYTES = int(os.environ.get("FILMTV_MAX_BYTES", 10 * 1024 * 1024 * 1024))
+    FILMTV_CHUNK_BYTES = int(os.environ.get("FILMTV_CHUNK_BYTES", 32 * 1024 * 1024))
     CHAT_MEDIA_MAX_BYTES = int(os.environ.get("CHAT_MEDIA_MAX_BYTES", 25 * 1024 * 1024))
+    MAX_CONTENT_LENGTH = int(
+        os.environ.get(
+            "MAX_CONTENT_LENGTH",
+            max(FILMTV_CHUNK_BYTES, CHAT_MEDIA_MAX_BYTES) + 1024 * 1024,
+        )
+    )
     MAX_CIPHERTEXT_CHARS = int(os.environ.get("MAX_CIPHERTEXT_CHARS", 32768))  # 32KB
     THEME_MAX_BYTES = int(os.environ.get("THEME_MAX_BYTES", 8 * 1024 * 1024))
     DOODLE_MAX_BYTES = int(os.environ.get("DOODLE_MAX_BYTES", 4 * 1024 * 1024))
@@ -92,4 +95,5 @@ class Config:
     RL_MESSAGES = (30, 60)
     RL_UPLOAD = (10, 60)
     RL_FILMTV = (20, 60)
+    RL_FILMTV_CHUNK = (500, 60)
     RL_SOCKET = (120, 60)

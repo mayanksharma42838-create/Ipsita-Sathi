@@ -7,6 +7,7 @@ import re
 import secrets
 import threading
 from datetime import timedelta, timezone
+from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, session
 from sqlalchemy import text
@@ -14,7 +15,7 @@ from sqlalchemy import text
 from app.auth_helpers import get_member_from_request, login_required, room_member_count
 from app.crypto_utils import generate_member_token
 from app.extensions import db
-from app.models import Member, Room, User, utcnow
+from app.models import FilmTVAnnotation, Member, Message, Room, User, utcnow
 from app.security import rate_or_429, sanitize_display_name, validate_password
 
 bp = Blueprint("auth", __name__, url_prefix="/api/auth")
@@ -113,6 +114,40 @@ def _member_session_expired(member: Member, now, idle_seconds: int) -> bool:
     return (now - last_seen).total_seconds() > idle_seconds
 
 
+def _room_content_paths(room: Room) -> list[Path]:
+    candidates = [room.theme_path, room.doodle_path]
+    if room.filmtv_source_type == "upload":
+        candidates.append(room.filmtv_source)
+    candidates.extend(
+        path for (path,) in Message.query.filter_by(room_pk=room.id)
+        .with_entities(Message.media_path).all()
+    )
+
+    media_root = Path(current_app.config["MEDIA_DIR"]).resolve()
+    safe_paths = []
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            path = Path(candidate).resolve()
+            path.relative_to(media_root)
+            if path.is_file():
+                safe_paths.append(path)
+        except (OSError, ValueError):
+            continue
+    chunk_dir = Path(current_app.config["FILMTV_DIR"]) / ".chunks"
+    safe_paths.extend(chunk_dir.glob(f"room_{room.id}_*.part"))
+    return safe_paths
+
+
+def _delete_room_files(paths: list[Path]) -> None:
+    for path in paths:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            current_app.logger.warning("Unable to remove deleted room file: %s", path)
+
+
 def _login_payload(room: Room, member: Member, phone_number: str, max_members: int):
     session["member_token"] = member.session_token
     return jsonify({
@@ -151,7 +186,7 @@ def login():
     phone_number = norm_id if id_type == "phone" else None
     password = data.get("password")
     legacy_room_id = data.get("legacy_room_id")
-    resume_token = data.get("resume_token")
+    resume_token = data.get("resume_token") or session.get("member_token")
 
     if not isinstance(password, str) or not password or len(password) > 256:
         return jsonify({"error": "Room password is required"}), 400
@@ -526,13 +561,43 @@ def logout():
     from flask import g
     from app import sockets as socket_mod
 
-    g.member.is_online = False
-    g.member.session_token = None
-    g.member.last_seen = utcnow()
-    db.session.commit()
+    member_id = g.member.id
+    room_id = g.room.room_id
+    room_pk = g.room.id
+    room_deleted = False
+    member_ids = [member_id]
+    file_paths: list[Path] = []
+
+    with _join_guard:
+        _begin_immediate()
+        room = Room.query.filter_by(id=room_pk).with_for_update().first()
+        member = Member.query.filter_by(id=member_id, room_pk=room_pk).with_for_update().first()
+        if room and member:
+            member.is_online = False
+            member.session_token = None
+            member.last_seen = utcnow()
+            db.session.flush()
+
+            members = Member.query.filter_by(room_pk=room_pk).all()
+            active_members = sum(bool(item.session_token) for item in members)
+            if len(members) >= 2 and active_members == 0:
+                member_ids = [item.id for item in members]
+                file_paths = _room_content_paths(room)
+                FilmTVAnnotation.query.filter_by(room_pk=room_pk).delete(synchronize_session=False)
+                room.filmtv_host_id = None
+                db.session.delete(room)
+                room_deleted = True
+            db.session.commit()
+        else:
+            db.session.rollback()
+
     session.pop("member_token", None)
-    socket_mod.disconnect_member(g.member.id)
-    return jsonify({"ok": True})
+    for logged_out_member_id in member_ids:
+        socket_mod.disconnect_member(logged_out_member_id)
+    if room_deleted:
+        _delete_room_files(file_paths)
+        socket_mod.clear_room_ephemeral_state(room_id)
+    return jsonify({"ok": True, "room_deleted": room_deleted})
 
 
 @bp.get("/session-check")

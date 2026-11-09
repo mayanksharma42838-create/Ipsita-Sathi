@@ -32,6 +32,8 @@ def make_test_config(tmp_path):
             "UPLOADS_DIR": paths["uploads"],
             "DOODLES_DIR": paths["doodles"],
             "FILMTV_DIR": paths["filmtv"],
+            "FILMTV_CHUNK_BYTES": 8,
+            "MAX_CONTENT_LENGTH": 1024 * 1024,
             "CORS_ORIGINS": ["http://localhost"],
             "RL_AUTH": (100, 60),
             "RL_MESSAGES": (100, 60),
@@ -167,3 +169,91 @@ def test_filmtv_rejects_streaming_app_pages(app):
 
     assert response.status_code == 400
     assert "blocks in-app playback" in response.get_json()["error"]
+
+
+def test_member_avatar_is_only_visible_inside_its_room(app):
+    first_client = app.test_client()
+    first = login_user(first_client, "15550001234").get_json()
+    peer_client = app.test_client()
+    peer = login_user(peer_client, "15550001234").get_json()
+    stranger_client = app.test_client()
+    login_user(stranger_client, "15550005678")
+
+    with app.app_context():
+        member = Member.query.filter_by(session_token=first["session_token"]).one()
+        avatar_path = Path(app.config["MEDIA_DIR"]) / "avatars" / "private-avatar.png"
+        avatar_path.parent.mkdir(parents=True, exist_ok=True)
+        avatar_path.write_bytes(b"private-avatar-bytes")
+        member.avatar_path = str(avatar_path)
+        db.session.commit()
+        member_id = member.id
+
+    url = f"/api/profile/avatar/{member_id}"
+    assert first_client.get(url, headers={"X-Session-Token": first["session_token"]}).data == b"private-avatar-bytes"
+    assert peer_client.get(url, headers={"X-Session-Token": peer["session_token"]}).data == b"private-avatar-bytes"
+    assert stranger_client.get(url).data != b"private-avatar-bytes"
+    assert app.test_client().get(url).data != b"private-avatar-bytes"
+
+
+def test_filmtv_chunk_upload_assembles_and_streams_video(app):
+    client = app.test_client()
+    user = login_user(client).get_json()
+    headers = {"X-Session-Token": user["session_token"]}
+    video_bytes = b"\x00\x00\x00\x18ftypisomdata"
+    init_response = client.post(
+        "/api/filmtv/upload/init",
+        headers=headers,
+        json={"filename": "shared.mp4", "size": len(video_bytes), "title": "Shared clip"},
+    )
+    assert init_response.status_code == 200
+    upload_token = init_response.get_json()["upload_token"]
+
+    first_chunk = client.post(
+        "/api/filmtv/upload/chunk",
+        headers=headers,
+        data={
+            "upload_token": upload_token,
+            "offset": "0",
+            "chunk": (BytesIO(video_bytes[:8]), "shared.mp4"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert first_chunk.status_code == 200
+    assert first_chunk.get_json()["next_offset"] == 8
+    assert first_chunk.get_json()["done"] is False
+
+    final_chunk = client.post(
+        "/api/filmtv/upload/chunk",
+        headers=headers,
+        data={
+            "upload_token": upload_token,
+            "offset": "8",
+            "chunk": (BytesIO(video_bytes[8:]), "shared.mp4"),
+        },
+        content_type="multipart/form-data",
+    )
+    assert final_chunk.status_code == 200
+    result = final_chunk.get_json()
+    assert result["done"] is True
+    assert result["state"]["title"] == "Shared clip"
+    assert result["state"]["host_id"] == user["member_id"]
+
+    stream_response = client.get("/api/filmtv/stream", headers=headers)
+    assert stream_response.status_code == 200
+    assert stream_response.data == video_bytes
+
+
+def test_filmtv_chunk_upload_rejects_files_over_10_gib(app):
+    client = app.test_client()
+    user = login_user(client).get_json()
+    response = client.post(
+        "/api/filmtv/upload/init",
+        headers={"X-Session-Token": user["session_token"]},
+        json={
+            "filename": "too-large.mp4",
+            "size": 10 * 1024 * 1024 * 1024 + 1,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "10 GiB" in response.get_json()["error"]

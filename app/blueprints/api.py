@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import time
 import uuid
 import zipfile
 import hashlib
@@ -17,6 +18,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 from flask import Blueprint, Response, current_app, g, jsonify, request, send_file, url_for
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 from sqlalchemy.orm import joinedload
+from werkzeug.datastructures import FileStorage
 from werkzeug.utils import secure_filename
 
 from app.auth_helpers import login_required, get_member_from_request
@@ -175,6 +177,25 @@ def _upload_request_too_large(max_file_bytes: int):
     if request.content_length is not None and request.content_length > request_limit:
         return jsonify({"error": "Request exceeds the upload limit."}), 413
     return None
+
+
+def _filmtv_chunk_path(upload_id: str, room_pk: int) -> Path:
+    chunk_dir = Path(current_app.config["FILMTV_DIR"]) / ".chunks"
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    return chunk_dir / f"room_{room_pk}_{upload_id}.part"
+
+
+def _cleanup_stale_filmtv_chunks() -> None:
+    chunk_dir = Path(current_app.config["FILMTV_DIR"]) / ".chunks"
+    if not chunk_dir.is_dir():
+        return
+    cutoff = time.time() - 24 * 60 * 60
+    for path in chunk_dir.glob("*.part"):
+        try:
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+        except OSError:
+            continue
 
 
 @bp.get("/messages")
@@ -589,11 +610,16 @@ def upload_avatar():
 @bp.get("/profile/avatar")
 @bp.get("/profile/avatar/<int:member_id>")
 def get_avatar(member_id: int | None = None):
-    target_member = None
+    requester = get_member_from_request()
     if member_id is not None:
-        target_member = db.session.get(Member, member_id)
+        candidate = db.session.get(Member, member_id)
+        target_member = (
+            candidate
+            if requester and candidate and requester.room_pk == candidate.room_pk
+            else None
+        )
     else:
-        target_member = get_member_from_request()
+        target_member = requester
 
     if target_member and target_member.avatar_path and os.path.isfile(target_member.avatar_path):
         try:
@@ -864,13 +890,160 @@ def tmdb_search():
         return jsonify({"ok": False, "error": str(e), "results": []})
 
 
+@bp.post("/filmtv/upload/init")
+@login_required
+def filmtv_upload_init():
+    limited = rate_or_429("filmtv_upload_init", *current_app.config["RL_FILMTV"])
+    if limited:
+        return limited
+
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "JSON object required"}), 400
+    filename = data.get("filename")
+    size = data.get("size")
+    title = data.get("title", "")
+    if not isinstance(filename, str) or not filename or not isinstance(title, str):
+        return jsonify({"error": "filename and title must be strings"}), 400
+    if type(size) is not int or size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
+        return jsonify({"error": "file is empty or exceeds the 10 GiB limit"}), 400
+
+    safe_filename = secure_filename(filename)
+    ext = Path(safe_filename).suffix.lower()
+    allowed = current_app.config["ALLOWED_VIDEO_EXT"] | current_app.config["ALLOWED_DOC_EXT"]
+    if not safe_filename or ext not in allowed:
+        return jsonify({"error": f"file type not allowed ({ext})"}), 400
+
+    upload_id = uuid.uuid4().hex
+    _cleanup_stale_filmtv_chunks()
+    partial_path = _filmtv_chunk_path(upload_id, g.room.id)
+    partial_path.touch(exist_ok=False)
+    serializer = URLSafeTimedSerializer(current_app.secret_key, salt="filmtv-upload")
+    upload_token = serializer.dumps(
+        {
+            "upload_id": upload_id,
+            "room_id": g.room.id,
+            "filename": safe_filename,
+            "size": size,
+            "title": title[:256],
+        }
+    )
+    return jsonify(
+        {
+            "ok": True,
+            "upload_token": upload_token,
+            "chunk_bytes": current_app.config["FILMTV_CHUNK_BYTES"],
+        }
+    )
+
+
+@bp.post("/filmtv/upload/chunk")
+@login_required
+def filmtv_upload_chunk():
+    limited = rate_or_429("filmtv_upload_chunk", *current_app.config["RL_FILMTV_CHUNK"])
+    if limited:
+        return limited
+    too_large = _upload_request_too_large(current_app.config["FILMTV_CHUNK_BYTES"])
+    if too_large:
+        return too_large
+
+    upload_token = request.form.get("upload_token", "")
+    serializer = URLSafeTimedSerializer(current_app.secret_key, salt="filmtv-upload")
+    try:
+        payload = serializer.loads(upload_token, max_age=24 * 60 * 60)
+    except BadSignature:
+        return jsonify({"error": "Invalid or expired upload token"}), 401
+    upload_id = payload.get("upload_id")
+    if payload.get("room_id") != g.room.id:
+        return jsonify({"error": "Upload belongs to a different room"}), 403
+    if not isinstance(upload_id, str) or not re.fullmatch(r"[a-f0-9]{32}", upload_id):
+        return jsonify({"error": "Invalid upload token"}), 401
+
+    partial_path = _filmtv_chunk_path(upload_id, g.room.id)
+    if not partial_path.is_file():
+        return jsonify({"error": "Upload session not found"}), 404
+    chunk = request.files.get("chunk")
+    try:
+        offset = int(request.form.get("offset", "-1"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid chunk offset"}), 400
+    if not chunk:
+        return jsonify({"error": "chunk file required"}), 400
+
+    chunk.stream.seek(0, os.SEEK_END)
+    chunk_size = chunk.stream.tell()
+    chunk.stream.seek(0)
+    expected_offset = partial_path.stat().st_size
+    if offset != expected_offset:
+        return jsonify({"error": "Chunk offset mismatch", "next_offset": expected_offset}), 409
+    if (
+        chunk_size <= 0
+        or chunk_size > current_app.config["FILMTV_CHUNK_BYTES"]
+        or offset + chunk_size > payload.get("size", 0)
+    ):
+        return jsonify({"error": "Invalid chunk size"}), 400
+
+    try:
+        with partial_path.open("ab") as output:
+            while True:
+                data = chunk.stream.read(1024 * 1024)
+                if not data:
+                    break
+                output.write(data)
+        next_offset = partial_path.stat().st_size
+        if next_offset < payload["size"]:
+            return jsonify({"ok": True, "done": False, "next_offset": next_offset})
+        if next_offset != payload["size"]:
+            partial_path.unlink(missing_ok=True)
+            return jsonify({"error": "Uploaded size does not match the file"}), 400
+
+        filename = payload["filename"]
+        ext = Path(filename).suffix.lower()
+        with partial_path.open("rb") as source_file:
+            header = source_file.read(32)
+            source_file.seek(0)
+            if not _valid_filmtv_upload(ext, header, FileStorage(stream=source_file, filename=filename)):
+                partial_path.unlink(missing_ok=True)
+                return jsonify({"error": "file content does not match its extension"}), 400
+
+        old_source = g.room.filmtv_source if g.room.filmtv_source_type == "upload" else None
+        dest = Path(current_app.config["FILMTV_DIR"]) / f"filmtv_{g.room.room_id}_{upload_id}{ext}"
+        partial_path.replace(dest)
+        g.room.filmtv_source_type = "upload"
+        g.room.filmtv_source = str(dest)
+        g.room.filmtv_title = payload.get("title") or filename
+        g.room.filmtv_playing = False
+        g.room.filmtv_position = 0.0
+        g.room.filmtv_host_id = g.member.id
+        g.room.filmtv_updated_at = utcnow()
+        try:
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            dest.unlink(missing_ok=True)
+            raise
+
+        _remove_filmtv_upload(old_source)
+        state = g.room.filmtv_state()
+        socketio.emit(
+            "filmtv_state",
+            {"state": state, "by": g.member.display_name, "action": "load"},
+            room=f"room:{g.room.room_id}",
+        )
+        return jsonify({"ok": True, "done": True, "next_offset": next_offset, "state": state})
+    except Exception:
+        logger.exception("Error while receiving FilmTV upload chunk")
+        db.session.rollback()
+        return jsonify({"error": "Internal server error during upload"}), 500
+
+
 @bp.post("/filmtv/upload")
 @login_required
 def filmtv_upload():
     limited = rate_or_429("filmtv_upload", *current_app.config["RL_UPLOAD"])
     if limited:
         return limited
-    too_large = _upload_request_too_large(current_app.config["FILMTV_MAX_BYTES"])
+    too_large = _upload_request_too_large(current_app.config["FILMTV_CHUNK_BYTES"])
     if too_large:
         return too_large
 
@@ -894,8 +1067,8 @@ def filmtv_upload():
         f.seek(0, os.SEEK_END)
         size = f.tell()
         f.seek(0)
-        if size <= 0 or size > current_app.config["FILMTV_MAX_BYTES"]:
-            return jsonify({"error": "file too large or empty"}), 400
+        if size <= 0 or size > current_app.config["FILMTV_CHUNK_BYTES"]:
+            return jsonify({"error": "use the chunked upload for files larger than one upload chunk"}), 400
 
         if not _valid_filmtv_upload(ext, header, f):
             return jsonify({"error": "file content does not match its extension"}), 400
